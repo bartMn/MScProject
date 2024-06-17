@@ -730,6 +730,20 @@ class FrankaCubePush(VecTask):
         self._init_cubeA_state = torch.zeros(self.num_envs, 13, device=self.device)
         self._init_cubeB_state = torch.zeros(self.num_envs, 13, device=self.device)
 
+        for i in range(4):
+            self.gym.set_light_parameters(self.sim, i, gymapi.Vec3(0.0, 0.0, 0.0), gymapi.Vec3(0.0, 0.0, 0.0), gymapi.Vec3(0.0, 0.0, 0.0))
+
+        num_of_lights = random.randint(1, 4)
+
+        light_offset = 0.3
+        for i in range(num_of_lights):
+            self.gym.set_light_parameters(self.sim,
+                                          i,
+                                          gymapi.Vec3(random.uniform(light_offset, 1.0), random.uniform(light_offset, 1.0), random.uniform(light_offset, 1.0)),
+                                          gymapi.Vec3(random.uniform(light_offset, 1.0), random.uniform(light_offset, 1.0), random.uniform(light_offset, 1.0)),
+                                          gymapi.Vec3(random.uniform(-2.0, 2.0), random.uniform(-2.0, 2.0), random.uniform(-2.0, 2.0))
+                                          )
+
         # Setup data
         self.init_data()
 
