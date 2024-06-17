@@ -36,12 +36,14 @@ from isaacgym import gymapi
 from isaacgymenvs.utils.torch_jit_utils import quat_mul, to_torch, tensor_clamp
 from isaacgymenvs.tasks.base.vec_task import VecTask
 
+ERASE_EXISTING_DATA = True
 ATTACHED_CAM_ANGLE_OFFSET = 90.0
 SAVE_SENSORS = True
-FRAMES_MAX = 20
+FRAMES_MAX = 360
+SIM_FRAMSE_TOSTART_RECORDING = 8
 SAMPLING_FREQ = 1
-CAM_SENSOR_WIDTH = int(1920/4)
-CAM_SENSOR_HEIGHT = int(1080/4)
+CAM_SENSOR_WIDTH = int(1920/3)
+CAM_SENSOR_HEIGHT = int(1080/3)
 GATHERED_DATA_ROOT = "/home/bart/project/IsaacGym_Preview_4_Package/isaacgym/IsaacGymEnvs-main/isaacgymenvs/recorded_data"
 
 from PIL import Image as im
@@ -216,7 +218,7 @@ class FrankaCubePush(VecTask):
         # Refresh tensors
         self._refresh()
 
-    def erase_old_data(self):
+    def create_folders_for_data(self):
         """
         Deletes all folders in the specified location.
     
@@ -231,21 +233,7 @@ class FrankaCubePush(VecTask):
             print(f"The specified path {GATHERED_DATA_ROOT} does not exist.")
             return
         
-        # Iterate through the items in the specified path
-        for item in os.listdir(GATHERED_DATA_ROOT):
-            item_path = os.path.join(GATHERED_DATA_ROOT, item)
-            # Check if the item is a directory
-            if os.path.isdir(item_path):
-                try:
-                    shutil.rmtree(item_path)
-                    print(f"Deleted folder: {item_path}")
-                except Exception as e:
-                    print(f"Failed to delete {item_path}. Reason: {e}")
-    
-        data_actors_dirs = [f"{GATHERED_DATA_ROOT}{os.sep}cameras",
-                            f"{GATHERED_DATA_ROOT}{os.sep}franka_robot",
-                            f"{GATHERED_DATA_ROOT}{os.sep}boxes",
-                           ]
+        self.next_env_to_save = None
 
         self.data_dirs = {"cam_rgb"         : f"{GATHERED_DATA_ROOT}{os.sep}cameras{os.sep}rgb",
                           "cam_depth"       : f"{GATHERED_DATA_ROOT}{os.sep}cameras{os.sep}depth",
@@ -257,17 +245,48 @@ class FrankaCubePush(VecTask):
                           "boxes_pos"       : f"{GATHERED_DATA_ROOT}{os.sep}boxes{os.sep}position",
                           "boxes_vel"       : f"{GATHERED_DATA_ROOT}{os.sep}boxes{os.sep}velocity",
                         }
+        
+        if ERASE_EXISTING_DATA:
 
-        folders_to_create = data_actors_dirs + list(self.data_dirs.values())
+            usr_input = input("this will erase all existind data, continue? [y]: ")
+            if usr_input != "y":
+                print("EXITING...")
+                exit(0)
 
+            self.next_env_to_save = 0
+            # Iterate through the items in the specified path
+            for item in os.listdir(GATHERED_DATA_ROOT):
+                item_path = os.path.join(GATHERED_DATA_ROOT, item)
+                # Check if the item is a directory
+                if os.path.isdir(item_path):
+                    try:
+                        shutil.rmtree(item_path)
+                        print(f"Deleted folder: {item_path}")
+                    except Exception as e:
+                        print(f"Failed to delete {item_path}. Reason: {e}")
+
+            data_actors_dirs = [f"{GATHERED_DATA_ROOT}{os.sep}cameras",
+                                f"{GATHERED_DATA_ROOT}{os.sep}franka_robot",
+                                f"{GATHERED_DATA_ROOT}{os.sep}boxes",
+                               ]
+            
+            folders_to_create = data_actors_dirs + list(self.data_dirs.values())
+
+            try:
+                for folder_to_create in folders_to_create:
+                    os.mkdir(folder_to_create)
+                    print(f"Folder created at: {folder_to_create}")
+
+            except Exception as e:
+                print(f"Failed to create folder at {new_folder}. Reason: {e}")
+    
+        else:
+            files = [int(f.replace("env", "")) for f in os.listdir(f"{GATHERED_DATA_ROOT}{os.sep}cameras{os.sep}rgb")]
+            self.next_env_to_save = max(files) + 1
 
         try:
-            for folder_to_create in folders_to_create:
-                os.mkdir(folder_to_create)
-                print(f"Folder created at: {folder_to_create}")
-
             for final_folder in self.data_dirs.values():
-                for env_num in range(self.num_envs):
+                for env_num in range(self.next_env_to_save, self.next_env_to_save + self.num_envs):
                     new_folder = os.path.join(final_folder, f"env{env_num}")
                     os.mkdir(new_folder)
                     print(f"Folder created at: {new_folder}")
@@ -280,10 +299,10 @@ class FrankaCubePush(VecTask):
     def save_rendered_imgs(self):
         for env_num in range(self.num_envs):
             for i, cam_handle in enumerate(self.camera_sensor_handle_lists[env_num]):
-                rgb_filename =       f"{self.data_dirs['cam_rgb']}{os.sep}env%d{os.sep}cam%d_frame%d.png" % (env_num, i, self.frame_count)
-                depth_filename =     f"{self.data_dirs['cam_depth']}{os.sep}env%d{os.sep}cam%d_frame%d.png" % (env_num, i, self.frame_count)
-                segmented_filename = f"{self.data_dirs['cam_seg']}{os.sep}env%d{os.sep}cam%d_frame%d.png" % (env_num, i, self.frame_count)
-                flow_filename =      f"{self.data_dirs['cam_flow']}{os.sep}env%d{os.sep}cam%d_frame%d.png" % (env_num, i, self.frame_count)
+                rgb_filename =       f"{self.data_dirs['cam_rgb']}{os.sep}env%d{os.sep}cam%d_frame%d.png" %   (env_num + self.next_env_to_save, i, self.data_frame_count)
+                depth_filename =     f"{self.data_dirs['cam_depth']}{os.sep}env%d{os.sep}cam%d_frame%d.png" % (env_num + self.next_env_to_save, i, self.data_frame_count)
+                segmented_filename = f"{self.data_dirs['cam_seg']}{os.sep}env%d{os.sep}cam%d_frame%d.png" %   (env_num + self.next_env_to_save, i, self.data_frame_count)
+                flow_filename =      f"{self.data_dirs['cam_flow']}{os.sep}env%d{os.sep}cam%d_frame%d.png" %  (env_num + self.next_env_to_save, i, self.data_frame_count)
                 
                 #saving by this function takses 40 sec (16 envs, 5 frames)
                 #gym.write_camera_image_to_file(sim, envs[env_num], cam_handle, gymapi.IMAGE_COLOR, rgb_filename)
@@ -320,13 +339,13 @@ class FrankaCubePush(VecTask):
         for i, franka_actor in enumerate(self.frankas):
             forces = self.gym.get_actor_dof_forces(self.envs[i], franka_actor)
             forces = forces.reshape(1, -1)
-            file_path = f"{self.data_dirs['franka_forces']}{os.sep}env%d{os.sep}forces.csv" % (i)
+            file_path = f"{self.data_dirs['franka_forces']}{os.sep}env%d{os.sep}forces.csv" % (i + self.next_env_to_save)
             with open(file_path, 'a') as file:
                 np.savetxt(file, forces, delimiter=',')
                 
             dof_states = self.gym.get_actor_dof_states(self.envs[i], franka_actor, gymapi.STATE_ALL)
             stacked_array = np.column_stack((dof_states['pos'].reshape(1, -1), dof_states['vel'].reshape(1, -1)))
-            file_path = f"{self.data_dirs['franka_state']}{os.sep}env%d{os.sep}positions.csv" % (i)
+            file_path = f"{self.data_dirs['franka_state']}{os.sep}env%d{os.sep}positions.csv" % (i + self.next_env_to_save)
             with open(file_path, 'a') as file:
                 # Write the array to the file
                 np.savetxt(file, stacked_array, delimiter=',')
@@ -348,7 +367,7 @@ class FrankaCubePush(VecTask):
                     
                 stacked_array = np.column_stack((box_pos_nparray, box_rot_nparray))
 
-                file_path = f"{self.data_dirs['boxes_pos']}{os.sep}env%d{os.sep}cube%d.csv" % (box_num, env_num)
+                file_path = f"{self.data_dirs['boxes_pos']}{os.sep}env%d{os.sep}cube%d.csv" % (env_num + self.next_env_to_save, self.next_env_to_save)
                 with open(file_path, 'a') as file:
                     # Write the array to the file
                     np.savetxt(file, stacked_array, delimiter=',')
@@ -362,7 +381,7 @@ class FrankaCubePush(VecTask):
                     
                 stacked_array = np.column_stack((box_lin_vel_nparray, box_ang_vel_nparray))
 
-                file_path = f"{self.data_dirs['boxes_vel']}{os.sep}env%d{os.sep}cube%d.csv" % (box_num, env_num)
+                file_path = f"{self.data_dirs['boxes_vel']}{os.sep}env%d{os.sep}cube%d.csv" % (env_num + self.next_env_to_save, box_num)
                 with open(file_path, 'a') as file:
                     # Write the array to the file
                     np.savetxt(file, stacked_array, delimiter=',')
@@ -413,7 +432,7 @@ class FrankaCubePush(VecTask):
             effort_act_row_np = effort_act_row.numpy()
 
             combined_actions = np.column_stack((pos_act_row_np.reshape(1, -1), effort_act_row_np.reshape(1, -1)))
-            file_path = f"{self.data_dirs['franka_actions']}{os.sep}env%d{os.sep}actions.csv" % (env_num)
+            file_path = f"{self.data_dirs['franka_actions']}{os.sep}env%d{os.sep}actions.csv" % (env_num + self.next_env_to_save)
             with open(file_path, 'a') as file:
                 # Write the array to the file
                 np.savetxt(file, combined_actions.reshape(1, -1), delimiter=',')
@@ -506,8 +525,9 @@ class FrankaCubePush(VecTask):
             self.camera_sensor_handle_lists = []
             self.attached_cam_sensors = []
             self.boxes_to_track = []
-            self.frame_count = 0
-            self.erase_old_data()
+            self.data_frame_count = 0
+            self.sim_frame_count = 0
+            self.create_folders_for_data()
 
         ##############################
 
@@ -1033,31 +1053,32 @@ class FrankaCubePush(VecTask):
 
         if SAVE_SENSORS:
             
-            self.frame_count += 1
+            self.sim_frame_count += 1
+            if self.sim_frame_count > SIM_FRAMSE_TOSTART_RECORDING:
+                if not self.sim_frame_count%SAMPLING_FREQ:
 
-            if not self.frame_count%SAMPLING_FREQ:
+                    self.save_cubes_position()
+                    #self.gym.refresh_force_sensor_tensor(self.sim)
+                    self.save_dof_states_and_forces()
 
-                self.save_cubes_position()
-                #self.gym.refresh_force_sensor_tensor(self.sim)
-                self.save_dof_states_and_forces()
+                    for env_ptr, franka_actor, cam_sensor_handle, pos_offset, axis_to_rotate, angle, flip in self.attached_cam_sensors:
+                        self.update_camera_pos(env_ptr, franka_actor, cam_sensor_handle, pos_offset, axis_to_rotate, angle, flip)
 
-                for env_ptr, franka_actor, cam_sensor_handle, pos_offset, axis_to_rotate, angle, flip in self.attached_cam_sensors:
-                    self.update_camera_pos(env_ptr, franka_actor, cam_sensor_handle, pos_offset, axis_to_rotate, angle, flip)
+                    self.gym.step_graphics(self.sim)
+                    self.gym.sync_frame_time(self.sim)
+                    self.gym.render_all_camera_sensors(self.sim)
 
-                self.gym.step_graphics(self.sim)
-                self.gym.sync_frame_time(self.sim)
-                self.gym.render_all_camera_sensors(self.sim)
+                    print(f"rendering frame num: {self.data_frame_count}")
 
-                print(f"rendering frame num: {self.frame_count}")
+                    self.save_rendered_imgs()
+                    self.save_actions()
+                    self.data_frame_count += 1
 
-                self.save_rendered_imgs()
-                self.save_actions()
-
-                if self.frame_count > FRAMES_MAX*SAMPLING_FREQ:
-                    end_time = time.time()
-                    elapsed_time = end_time - self.start_time
-                    print(f"RENDERING {FRAMES_MAX} FREMES TOOK: {elapsed_time} seconds")
-                    exit(0)
+                    if self.data_frame_count > FRAMES_MAX:
+                        end_time = time.time()
+                        elapsed_time = end_time - self.start_time
+                        print(f"RENDERING {FRAMES_MAX} FREMES TOOK: {elapsed_time} seconds")
+                        exit(0)
             
             
 
