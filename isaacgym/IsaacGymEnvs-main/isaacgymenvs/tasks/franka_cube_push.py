@@ -735,12 +735,12 @@ class FrankaCubePush(VecTask):
 
         num_of_lights = random.randint(1, 4)
 
-        light_offset = 0.3
+        light_min_val = 0.3
         for i in range(num_of_lights):
             self.gym.set_light_parameters(self.sim,
                                           i,
-                                          gymapi.Vec3(random.uniform(light_offset, 1.0), random.uniform(light_offset, 1.0), random.uniform(light_offset, 1.0)),
-                                          gymapi.Vec3(random.uniform(light_offset, 1.0), random.uniform(light_offset, 1.0), random.uniform(light_offset, 1.0)),
+                                          gymapi.Vec3(random.uniform(light_min_val, 1.0), random.uniform(light_min_val, 1.0), random.uniform(light_min_val, 1.0)),
+                                          gymapi.Vec3(random.uniform(light_min_val, 1.0), random.uniform(light_min_val, 1.0), random.uniform(light_min_val, 1.0)),
                                           gymapi.Vec3(random.uniform(-2.0, 2.0), random.uniform(-2.0, 2.0), random.uniform(-2.0, 2.0))
                                           )
 
