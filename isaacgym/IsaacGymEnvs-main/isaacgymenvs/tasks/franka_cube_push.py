@@ -84,20 +84,6 @@ def save_flow_img(flow_filename, optical_flow_image):
     normalized_depth_image.save(flow_filename)
 
 
-
-def quaternion_from_two_vectors(v_from, v_to):
-    dot_product = v_from.dot(v_to)
-    if abs(dot_product) + 1 < 1e-6:
-        cross_product = gymapi.Vec3(1.0, 0.0, 0.0).cross(v_from)
-        if cross_product.length() < 1e-6:
-            cross_product = gymapi.Vec3(0.0, 1.0, 0.0).cross(v_from)
-        cross_product.normalize()
-        return gymapi.Quat(0.0, cross_product.x, cross_product.y, cross_product.z)
-    else:
-        w = dot_product + v_from.dot(v_to)
-        xyz = v_from.cross(v_to)
-        return gymapi.Quat(w, xyz.x, xyz.y, xyz.z)
-
 @torch.jit.script
 def axisangle2quat(vec, eps=1e-6):
     """
@@ -310,9 +296,7 @@ class FrankaCubePush(VecTask):
 
                 # Convert from RGBA to RGB
                 img_rgb = cv2.cvtColor(img_array, cv2.COLOR_RGBA2RGB)
-
-                    # Save the image using OpenCV
-
+                
                 #by using multithreading it takes 3.6 sec
                 save_rgb_thread = threading.Thread(target=save_rgb_img, args=(rgb_filename, img_rgb))
                 save_rgb_thread.start()
@@ -336,19 +320,11 @@ class FrankaCubePush(VecTask):
         for i, franka_actor in enumerate(self.frankas):
             forces = self.gym.get_actor_dof_forces(self.envs[i], franka_actor)
             forces = forces.reshape(1, -1)
-            #print(f"forces = {forces}")
-            #print(f"forces.shape = {forces.shape}")
-            
             file_path = f"{self.data_dirs['franka_forces']}{os.sep}env%d{os.sep}forces.csv" % (i)
             with open(file_path, 'a') as file:
-                # Write the array to the file
                 np.savetxt(file, forces, delimiter=',')
                 
             dof_states = self.gym.get_actor_dof_states(self.envs[i], franka_actor, gymapi.STATE_ALL)
-            #print(f"dof_states = {dof_states}")
-            #print(f"dof_states['pos'] = {dof_states['pos']}")
-            #print(f"dof_states['vel'] = {dof_states['vel']}")
-            
             stacked_array = np.column_stack((dof_states['pos'].reshape(1, -1), dof_states['vel'].reshape(1, -1)))
             file_path = f"{self.data_dirs['franka_state']}{os.sep}env%d{os.sep}positions.csv" % (i)
             with open(file_path, 'a') as file:
@@ -418,23 +394,14 @@ class FrankaCubePush(VecTask):
 
         if flip:
             axis_to_flip = gymapi.Vec3(1.0, 0.0, 0.0)
-            #rotated_offset = panda_hand_rot.rotate(pos_offset)
-            #look_from_transform.p = panda_hand_pos + rotated_offset
             angle_flipping = gymapi.Quat.from_axis_angle(axis_to_flip, np.radians(180))
             look_from_transform.r *= angle_flipping
 
-        #self.gym.set_camera_location(cam_sensor_handle, env_ptr, gymapi.Vec3(-2.0,-2.0, 2.0), gymapi.Vec3(2.0,2.0, 0.0))
         self.gym.set_camera_location(cam_sensor_handle, env_ptr, look_from_transform.p, gymapi.Vec3(0.0, 0.0, 0.0))
         self.gym.set_camera_transform(cam_sensor_handle, env_ptr, look_from_transform)
 
 
     def save_actions(self):
-
-        #print(f"self._pos_control = {self._pos_control}")
-        #print("The shape of self._pos_control is:", self._pos_control.shape)
-#
-        #print(f"self._effort_control = {self._effort_control}")
-        #print("The shape of self._effort_control is:", self._effort_control.shape)
 
         for env_num in range(self._pos_control.shape[0]):
             pos_act_row = self._pos_control[env_num]
@@ -699,13 +666,6 @@ class FrankaCubePush(VecTask):
                 axis_to_rotate = gymapi.Vec3(0.0, 1.0, 0.0)
                 angle = np.radians(-ATTACHED_CAM_ANGLE_OFFSET)
                 self.update_camera_pos(env_ptr, franka_actor, cam_sensor_handle_attached0, pos_offset, axis_to_rotate, angle, False)
-                
-                #local_transform = gymapi.Transform()
-                #local_transform.p = gymapi.Vec3(0.1,0.1,0.1)
-                #local_transform.r = gymapi.Quat.from_axis_angle(gymapi.Vec3(0,1,0), np.radians(0*45.0))
-                #panda_hand_idx = self.gym.find_actor_rigid_body_index(env_ptr, franka_actor, "panda_hand", gymapi.DOMAIN_ACTOR)
-                #body_handle_to_attach_cam = self.gym.get_actor_rigid_body_handle(env_ptr, franka_actor, panda_hand_idx)
-                #self.gym.attach_camera_to_body(cam_sensor_handle1, env_ptr, body_handle_to_attach_cam, local_transform, gymapi.FOLLOW_TRANSFORM)
                 self.attached_cam_sensors.append([env_ptr, franka_actor, cam_sensor_handle_attached0, pos_offset, axis_to_rotate, angle, False])
 
                 cam_sensor_handle_attached1 = self.gym.create_camera_sensor(env_ptr, cam_sensor_props)
@@ -713,6 +673,7 @@ class FrankaCubePush(VecTask):
                 axis_to_rotate = gymapi.Vec3(0.0, 1.0, 0.0)
                 angle = np.radians(180+ATTACHED_CAM_ANGLE_OFFSET)
                 self.update_camera_pos(env_ptr, franka_actor, cam_sensor_handle_attached1, pos_offset, axis_to_rotate, angle, True)
+                
                 self.attached_cam_sensors.append([env_ptr, franka_actor, cam_sensor_handle_attached1, pos_offset, axis_to_rotate, angle, True])
                 self.camera_sensor_handle_lists.append([cam_sensor_handle0,
                                                         cam_sensor_handle1,
@@ -721,7 +682,6 @@ class FrankaCubePush(VecTask):
                                                         cam_sensor_handle_attached1])
             
             
-            #floor_actor = self.gym.create_actor(env_ptr, floor_asset, floor_start_pose, "floor", i, 8, 0)
             # Store the created env pointers
             self.envs.append(env_ptr)
             self.frankas.append(franka_actor)
