@@ -36,7 +36,7 @@ from isaacgym import gymapi
 from isaacgymenvs.utils.torch_jit_utils import quat_mul, to_torch, tensor_clamp
 from isaacgymenvs.tasks.base.vec_task import VecTask
 
-ERASE_EXISTING_DATA = True
+ERASE_EXISTING_DATA = False
 ATTACHED_CAM_ANGLE_OFFSET = 90.0
 SAVE_SENSORS = True
 FRAMES_MAX = 210
