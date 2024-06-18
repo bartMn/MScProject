@@ -44,7 +44,7 @@ import time
 import shutil
 
 
-ERASE_EXISTING_DATA = False
+ERASE_EXISTING_DATA = True
 ATTACHED_CAM_ANGLE_OFFSET = 90.0
 SAVE_SENSORS = True
 FRAMES_MAX = 210
@@ -281,18 +281,31 @@ class FrankaCubePush(VecTask):
                     os.mkdir(folder_to_create)
                     print(f"Folder created at: {folder_to_create}")
 
+                    if f"cameras{os.sep}" in folder_to_create:
+                        for i in range(5):
+                            new_folder = f"{folder_to_create}{os.sep}cam{i}"
+                            os.mkdir(new_folder)
+                        
+
             except Exception as e:
                 print(f"Failed to create folder at {new_folder}. Reason: {e}")
     
+
         else:
-            files = [int(f.replace("env", "")) for f in os.listdir(f"{GATHERED_DATA_ROOT}{os.sep}cameras{os.sep}rgb")]
+            files = [int(f.replace("env", "")) for f in os.listdir(f"{GATHERED_DATA_ROOT}{os.sep}cameras{os.sep}rgb{os.sep}cam0")]
             self.next_env_to_save = max(files) + 1
 
         try:
             for final_folder in self.data_dirs.values():
                 for env_num in range(self.next_env_to_save, self.next_env_to_save + self.num_envs):
-                    new_folder = os.path.join(final_folder, f"env{env_num}")
-                    os.mkdir(new_folder)
+                    if "cameras" in final_folder:
+                        for i in range(5):
+                            new_folder = os.path.join(f"{final_folder}{os.sep}cam{i}", f"env{env_num}")
+                            os.mkdir(new_folder)
+                    else:
+                        new_folder = os.path.join(final_folder, f"env{env_num}")
+                        os.mkdir(new_folder)
+
                     print(f"Folder created at: {new_folder}")
 
         except Exception as e:
@@ -302,11 +315,11 @@ class FrankaCubePush(VecTask):
 
     def save_rendered_imgs(self):
         for env_num in range(self.num_envs):
-            for i, cam_handle in enumerate(self.camera_sensor_handle_lists[env_num]):
-                rgb_filename =       f"{self.data_dirs['cam_rgb']}{os.sep}env%d{os.sep}cam%d_frame%d.png" %   (env_num + self.next_env_to_save, i, self.data_frame_count)
-                depth_filename =     f"{self.data_dirs['cam_depth']}{os.sep}env%d{os.sep}cam%d_frame%d.png" % (env_num + self.next_env_to_save, i, self.data_frame_count)
-                segmented_filename = f"{self.data_dirs['cam_seg']}{os.sep}env%d{os.sep}cam%d_frame%d.png" %   (env_num + self.next_env_to_save, i, self.data_frame_count)
-                flow_filename =      f"{self.data_dirs['cam_flow']}{os.sep}env%d{os.sep}cam%d_frame%d.png" %  (env_num + self.next_env_to_save, i, self.data_frame_count)
+            for cam_num, cam_handle in enumerate(self.camera_sensor_handle_lists[env_num]):
+                rgb_filename =       f"{self.data_dirs['cam_rgb']}{os.sep}cam%d{os.sep}env%d{os.sep}frame%d.png" %   (cam_num, env_num + self.next_env_to_save, self.data_frame_count)
+                depth_filename =     f"{self.data_dirs['cam_depth']}{os.sep}cam%d{os.sep}env%d{os.sep}frame%d.png" % (cam_num, env_num + self.next_env_to_save, self.data_frame_count)
+                segmented_filename = f"{self.data_dirs['cam_seg']}{os.sep}cam%d{os.sep}env%d{os.sep}frame%d.png" %   (cam_num, env_num + self.next_env_to_save, self.data_frame_count)
+                flow_filename =      f"{self.data_dirs['cam_flow']}{os.sep}cam%d{os.sep}env%d{os.sep}frame%d.png" %  (cam_num, env_num + self.next_env_to_save, self.data_frame_count)
                 
                 #saving by this function takses 40 sec (16 envs, 5 frames)
                 #gym.write_camera_image_to_file(sim, envs[env_num], cam_handle, gymapi.IMAGE_COLOR, rgb_filename)
