@@ -36,6 +36,14 @@ from isaacgym import gymapi
 from isaacgymenvs.utils.torch_jit_utils import quat_mul, to_torch, tensor_clamp
 from isaacgymenvs.tasks.base.vec_task import VecTask
 
+from PIL import Image as im
+import threading
+import cv2
+import random
+import time
+import shutil
+
+
 ERASE_EXISTING_DATA = False
 ATTACHED_CAM_ANGLE_OFFSET = 90.0
 SAVE_SENSORS = True
@@ -46,12 +54,8 @@ CAM_SENSOR_WIDTH = int(1920/3)
 CAM_SENSOR_HEIGHT = int(1080/3)
 GATHERED_DATA_ROOT = "/home/bart/project/IsaacGym_Preview_4_Package/isaacgym/IsaacGymEnvs-main/isaacgymenvs/recorded_data"
 
-from PIL import Image as im
-import threading
-import cv2
-import random
-import time
-import shutil
+
+
 def save_rgb_img(rgb_filename, img_rgb):
         cv2.imwrite(rgb_filename, img_rgb)
 
