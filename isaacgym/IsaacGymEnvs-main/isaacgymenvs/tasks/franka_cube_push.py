@@ -384,7 +384,7 @@ class FrankaCubePush(VecTask):
                     
                 stacked_array = np.column_stack((box_pos_nparray, box_rot_nparray))
 
-                file_path = f"{self.data_dirs['boxes_pos']}{os.sep}env%d{os.sep}cube%d.csv" % (env_num + self.next_env_to_save, self.next_env_to_save)
+                file_path = f"{self.data_dirs['boxes_pos']}{os.sep}env%d{os.sep}cube%d.csv" % (env_num + self.next_env_to_save, box_num)
                 with open(file_path, 'a') as file:
                     # Write the array to the file
                     np.savetxt(file, stacked_array, delimiter=',')
