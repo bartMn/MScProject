@@ -13,17 +13,11 @@ def natural_sort_key(s):
 
 class CustomDataset(Dataset):
     def __init__(self, data_dict_dir, transform=None):
-        #self.sensor1_dir = sensor1_dir
-        #self.sensor2_dir = sensor2_dir
-        #self.sensor3_dir = sensor3_dir
-        self.transform = transform
-        
 
-        sensor1_dir = data_dict_dir["cam0_rgb"]
-        sensor2_dir = data_dict_dir["cam1_rgb"]
-        sensor3_dir = data_dict_dir["boxes_pos"]
+        self.transform = transform
+    
         # Collect all env directories
-        self.env_dirs = sorted(os.listdir(sensor1_dir))
+        self.env_dirs = sorted(os.listdir(data_dict_dir["cam0_rgb"]))
         
         # Initialize lists to hold image paths and csv data
         self.data = dict()
@@ -31,45 +25,50 @@ class CustomDataset(Dataset):
             self.data[key] = []
 
         for env_num in self.env_dirs:
-            sensor1_env_dir = os.path.join(sensor1_dir, env_num)
-            sensor2_env_dir = os.path.join(sensor2_dir, env_num)
-            
-            
-            # Get image files
-            cam0_rgb = sorted(os.listdir(sensor1_env_dir), key = natural_sort_key)
-            cam1_rgb = sorted(os.listdir(sensor2_env_dir), key = natural_sort_key)
-            
-            
-            for img in cam0_rgb:
-                self.data["cam0_rgb"].append(os.path.join(sensor1_env_dir, img))
-            for img in cam1_rgb:
-                self.data["cam1_rgb"].append(os.path.join(sensor2_env_dir, img))
-            
-             # Read csv file
-            sensor3_env_file = os.path.join(sensor3_dir, env_num, 'cube0.csv')
-            sensor3_df = pd.read_csv(sensor3_env_file, header=None)
-            self.data["boxes_pos"].extend(sensor3_df.values.tolist())
+            for dict_key in data_dict_dir:
+
+                if "cam" in dict_key:
+                    cam_env_dir = os.path.join(data_dict_dir[dict_key], env_num)
+                    # Get image files
+                    cam = sorted(os.listdir(cam_env_dir), key = natural_sort_key)
+
+                    for img in cam:
+                        self.data[dict_key].append(os.path.join(cam_env_dir, img))
+
+                else:
+                    # Read csv file
+                    csv_env_file = os.path.join(data_dict_dir[dict_key], env_num, 'data.csv')
+                    df = pd.read_csv(csv_env_file, header=None)
+                    self.data[dict_key].extend(df.values.tolist())
 
     
     
     def __len__(self):
         return len(self.data["cam0_rgb"])
 
-    def __getitem__(self, idx):
-        # Read images
-        sensor1_image = Image.open(self.data["cam0_rgb"][idx]).convert('RGB')
-        sensor2_image = Image.open(self.data["cam1_rgb"][idx]).convert('RGB')
-        
-        # Read CSV row
-        sensor3_row = self.data["boxes_pos"][idx]
-        
-        if self.transform:
-            sensor1_image = self.transform(sensor1_image)
-            sensor2_image = self.transform(sensor2_image)
 
-        # Convert CSV row to tensor
-        sensor3_tensor = torch.tensor(sensor3_row, dtype=torch.float)
+    def __getitem__(self, idx):
         
+        mulitisensory_sample = dict()
+
+        for dict_key in self.data:
+                
+            if "cam" in dict_key:
+                # Read images
+                mulitisensory_sample[dict_key] = Image.open(self.data[dict_key][idx]).convert('RGB')
+                #sensor2_image = Image.open(self.data["cam1_rgb"][idx]).convert('RGB')
+
+                if self.transform:
+                    mulitisensory_sample[dict_key] = self.transform(mulitisensory_sample[dict_key])
+                    #sensor2_image = self.transform(sensor2_image)
+
+            else:
+                # Read CSV row
+                read_data = self.data[dict_key][idx]
+                # Convert CSV row to tensor
+                mulitisensory_sample[dict_key] = torch.tensor(read_data, dtype=torch.float)
+        
+        return mulitisensory_sample
         return sensor1_image, sensor2_image, sensor3_tensor
 
 
@@ -84,8 +83,10 @@ def main():
     data_dict_dir["franka_actions"] = f"{data_root}{os.sep}franka_robot{os.sep}actions"
     data_dict_dir["franka_forces"] = f"{data_root}{os.sep}franka_robot{os.sep}dof_forces"
     data_dict_dir["franka_state"] = f"{data_root}{os.sep}franka_robot{os.sep}dof_state"
-    data_dict_dir["boxes_pos"] = f"{data_root}{os.sep}boxes{os.sep}position"
-    data_dict_dir["boxes_vel"] = f"{data_root}{os.sep}boxes{os.sep}velocity"
+    data_dict_dir["boxes_pos0"] = f"{data_root}{os.sep}boxes{os.sep}position{os.sep}box0"
+    data_dict_dir["boxes_pos1"] = f"{data_root}{os.sep}boxes{os.sep}position{os.sep}box1"
+    data_dict_dir["boxes_vel0"] = f"{data_root}{os.sep}boxes{os.sep}velocity{os.sep}box0"
+    data_dict_dir["boxes_vel1"] = f"{data_root}{os.sep}boxes{os.sep}velocity{os.sep}box1"
     
 
     for cam_num in range(NUM_OF_CAMERAS):
@@ -102,34 +103,30 @@ def main():
    
     # Iterate over the DataLoader
     for batch in dataloader:
-        sensor1_imgs, sensor2_imgs, sensor3_data = batch
-        print(f"sensor1_imgs.shape = {sensor1_imgs.shape}")
-        print(f"sensor2_imgs.shape = {sensor2_imgs.shape}")
-        print(f"sensor3_data.shape = {sensor3_data.shape}")
-
-        first_sensor1_img = sensor1_imgs[0]
-        first_sensor2_img = sensor2_imgs[0]
-        first_sensor3_data = sensor3_data[0]
-        
-        # Convert tensors to numpy arrays for displaying
-        first_sensor1_img_np = first_sensor1_img.permute(1, 2, 0).cpu().numpy()
-        first_sensor2_img_np = first_sensor2_img.permute(1, 2, 0).cpu().numpy()
-        
-        # Convert from float [0, 1] to uint8 [0, 255]
-        first_sensor1_img_np = (first_sensor1_img_np * 255).astype('uint8')
-        first_sensor2_img_np = (first_sensor2_img_np * 255).astype('uint8')
-        
-        # Convert RGB to BGR for OpenCV
-        first_sensor1_img_np = cv2.cvtColor(first_sensor1_img_np, cv2.COLOR_RGB2BGR)
-        first_sensor2_img_np = cv2.cvtColor(first_sensor2_img_np, cv2.COLOR_RGB2BGR)
-        
-        # Display the images using OpenCV
-        cv2.imshow("Sensor 1 Image", first_sensor1_img_np)
-        cv2.imshow("Sensor 2 Image", first_sensor2_img_np)
-        
-        # Print the corresponding row from sensor3
-        print("First row from sensor3 data:")
-        print(first_sensor3_data)
+        mulitisensory_sample = batch
+        for sample_key in mulitisensory_sample:
+            print(f"mulitisensory_sample['{sample_key}'].shape = {mulitisensory_sample[sample_key].shape}")
+            
+            if "cam" in sample_key:
+                
+                cam_sensor_img = mulitisensory_sample[sample_key][0]
+                
+                # Convert tensors to numpy arrays for displaying
+                cam_sensor_img = cam_sensor_img.permute(1, 2, 0).cpu().numpy()
+                
+                # Convert from float [0, 1] to uint8 [0, 255]
+                cam_sensor_img = (cam_sensor_img * 255).astype('uint8')
+                
+                # Convert RGB to BGR for OpenCV
+                cam_sensor_img = cv2.cvtColor(cam_sensor_img, cv2.COLOR_RGB2BGR)
+                
+                # Display the images using OpenCV
+                cv2.imshow(f"{sample_key} Image", cam_sensor_img)
+                
+            else:
+                csv_data = mulitisensory_sample[sample_key][0]
+                print(f"{sample_key} data:")
+                print(csv_data)
         
         # Wait until a key is pressed to close the images
        
