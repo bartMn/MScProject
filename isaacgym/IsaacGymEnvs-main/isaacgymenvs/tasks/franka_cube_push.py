@@ -246,8 +246,12 @@ class FrankaCubePush(VecTask):
                           "franka_forces"   : f"{GATHERED_DATA_ROOT}{os.sep}franka_robot{os.sep}dof_forces",
                           "franka_state"    : f"{GATHERED_DATA_ROOT}{os.sep}franka_robot{os.sep}dof_state",
                           "franka_actions"  : f"{GATHERED_DATA_ROOT}{os.sep}franka_robot{os.sep}actions",
-                          "boxes_pos"       : f"{GATHERED_DATA_ROOT}{os.sep}boxes{os.sep}position",
-                          "boxes_vel"       : f"{GATHERED_DATA_ROOT}{os.sep}boxes{os.sep}velocity",
+                          #"boxes_pos"       : f"{GATHERED_DATA_ROOT}{os.sep}boxes{os.sep}position",
+                          "boxes_pos0"       : f"{GATHERED_DATA_ROOT}{os.sep}boxes{os.sep}position{os.sep}box0",
+                          "boxes_pos1"       : f"{GATHERED_DATA_ROOT}{os.sep}boxes{os.sep}position{os.sep}box1",
+                          #"boxes_vel"       : f"{GATHERED_DATA_ROOT}{os.sep}boxes{os.sep}velocity",
+                          "boxes_vel0"       : f"{GATHERED_DATA_ROOT}{os.sep}boxes{os.sep}velocity{os.sep}box0",
+                          "boxes_vel1"       : f"{GATHERED_DATA_ROOT}{os.sep}boxes{os.sep}velocity{os.sep}box1"
                         }
         
         if ERASE_EXISTING_DATA:
@@ -272,6 +276,8 @@ class FrankaCubePush(VecTask):
             data_actors_dirs = [f"{GATHERED_DATA_ROOT}{os.sep}cameras",
                                 f"{GATHERED_DATA_ROOT}{os.sep}franka_robot",
                                 f"{GATHERED_DATA_ROOT}{os.sep}boxes",
+                                f"{GATHERED_DATA_ROOT}{os.sep}boxes{os.sep}position",
+                                f"{GATHERED_DATA_ROOT}{os.sep}boxes{os.sep}velocity"
                                ]
             
             folders_to_create = data_actors_dirs + list(self.data_dirs.values())
@@ -285,7 +291,7 @@ class FrankaCubePush(VecTask):
                         for i in range(5):
                             new_folder = f"{folder_to_create}{os.sep}cam{i}"
                             os.mkdir(new_folder)
-                        
+
 
             except Exception as e:
                 print(f"Failed to create folder at {new_folder}. Reason: {e}")
@@ -356,13 +362,13 @@ class FrankaCubePush(VecTask):
         for i, franka_actor in enumerate(self.frankas):
             forces = self.gym.get_actor_dof_forces(self.envs[i], franka_actor)
             forces = forces.reshape(1, -1)
-            file_path = f"{self.data_dirs['franka_forces']}{os.sep}env%d{os.sep}forces.csv" % (i + self.next_env_to_save)
+            file_path = f"{self.data_dirs['franka_forces']}{os.sep}env%d{os.sep}data.csv" % (i + self.next_env_to_save)
             with open(file_path, 'a') as file:
                 np.savetxt(file, forces, delimiter=',')
                 
             dof_states = self.gym.get_actor_dof_states(self.envs[i], franka_actor, gymapi.STATE_ALL)
             stacked_array = np.column_stack((dof_states['pos'].reshape(1, -1), dof_states['vel'].reshape(1, -1)))
-            file_path = f"{self.data_dirs['franka_state']}{os.sep}env%d{os.sep}positions.csv" % (i + self.next_env_to_save)
+            file_path = f"{self.data_dirs['franka_state']}{os.sep}env%d{os.sep}data.csv" % (i + self.next_env_to_save)
             with open(file_path, 'a') as file:
                 # Write the array to the file
                 np.savetxt(file, stacked_array, delimiter=',')
@@ -384,7 +390,7 @@ class FrankaCubePush(VecTask):
                     
                 stacked_array = np.column_stack((box_pos_nparray, box_rot_nparray))
 
-                file_path = f"{self.data_dirs['boxes_pos']}{os.sep}env%d{os.sep}cube%d.csv" % (env_num + self.next_env_to_save, box_num)
+                file_path = f"{self.data_dirs[f'boxes_pos{box_num}']}{os.sep}env{env_num + self.next_env_to_save}{os.sep}data.csv"
                 with open(file_path, 'a') as file:
                     # Write the array to the file
                     np.savetxt(file, stacked_array, delimiter=',')
@@ -398,7 +404,8 @@ class FrankaCubePush(VecTask):
                     
                 stacked_array = np.column_stack((box_lin_vel_nparray, box_ang_vel_nparray))
 
-                file_path = f"{self.data_dirs['boxes_vel']}{os.sep}env%d{os.sep}cube%d.csv" % (env_num + self.next_env_to_save, box_num)
+                file_path = f"{self.data_dirs[f'boxes_vel{box_num}']}{os.sep}env{env_num + self.next_env_to_save}{os.sep}data.csv"
+
                 with open(file_path, 'a') as file:
                     # Write the array to the file
                     np.savetxt(file, stacked_array, delimiter=',')
@@ -449,7 +456,7 @@ class FrankaCubePush(VecTask):
             effort_act_row_np = effort_act_row.numpy()
 
             combined_actions = np.column_stack((pos_act_row_np.reshape(1, -1), effort_act_row_np.reshape(1, -1)))
-            file_path = f"{self.data_dirs['franka_actions']}{os.sep}env%d{os.sep}actions.csv" % (env_num + self.next_env_to_save)
+            file_path = f"{self.data_dirs['franka_actions']}{os.sep}env%d{os.sep}data.csv" % (env_num + self.next_env_to_save)
             with open(file_path, 'a') as file:
                 # Write the array to the file
                 np.savetxt(file, combined_actions.reshape(1, -1), delimiter=',')
