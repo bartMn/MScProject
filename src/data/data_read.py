@@ -26,9 +26,10 @@ class CustomDataset(Dataset):
         self.env_dirs = sorted(os.listdir(sensor1_dir))
         
         # Initialize lists to hold image paths and csv data
-        self.sensor1_images = []
-        self.sensor2_images = []
-        self.sensor3_data = []
+        self.data = dict()
+        self.data["cam0_rgb"] = []
+        self.data["cam1_rgb"] = []
+        self.data["boxes_pos"] = []
 
         for env_num in self.env_dirs:
             sensor1_env_dir = os.path.join(sensor1_dir, env_num)
@@ -36,29 +37,29 @@ class CustomDataset(Dataset):
             sensor3_env_file = os.path.join(sensor3_dir, env_num, 'cube0.csv')
             
             # Get image files
-            sensor1_images = sorted(os.listdir(sensor1_env_dir), key = natural_sort_key)
-            sensor2_images = sorted(os.listdir(sensor2_env_dir), key = natural_sort_key)
+            cam0_rgb = sorted(os.listdir(sensor1_env_dir), key = natural_sort_key)
+            cam1_rgb = sorted(os.listdir(sensor2_env_dir), key = natural_sort_key)
             
             # Read csv file
             sensor3_df = pd.read_csv(sensor3_env_file)
             
-            for img in sensor1_images:
-                self.sensor1_images.append(os.path.join(sensor1_env_dir, img))
-            for img in sensor2_images:
-                self.sensor2_images.append(os.path.join(sensor2_env_dir, img))
+            for img in cam0_rgb:
+                self.data["cam0_rgb"].append(os.path.join(sensor1_env_dir, img))
+            for img in cam1_rgb:
+                self.data["cam1_rgb"].append(os.path.join(sensor2_env_dir, img))
             
-            self.sensor3_data.extend(sensor3_df.values.tolist())
+            self.data["boxes_pos"].extend(sensor3_df.values.tolist())
     
     def __len__(self):
-        return len(self.sensor1_images)
+        return len(self.data["cam0_rgb"])
 
     def __getitem__(self, idx):
         # Read images
-        sensor1_image = Image.open(self.sensor1_images[idx]).convert('RGB')
-        sensor2_image = Image.open(self.sensor2_images[idx]).convert('RGB')
+        sensor1_image = Image.open(self.data["cam0_rgb"][idx]).convert('RGB')
+        sensor2_image = Image.open(self.data["cam1_rgb"][idx]).convert('RGB')
         
         # Read CSV row
-        sensor3_row = self.sensor3_data[idx]
+        sensor3_row = self.data["boxes_pos"][idx]
         
         if self.transform:
             sensor1_image = self.transform(sensor1_image)
