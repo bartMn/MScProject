@@ -11,14 +11,15 @@ def get_flow_and_save(source, dest, env_num, cam_num):
     #frame2_source = source +os.sep+ "rgb_env0_cam0_frame20.png"
 
     frame1 = cv.imread(frame1_source)
-    #frame2 = cv.imread(frame2_source)
-    #cap = cv.VideoCapture(cv.samples.findFile("vtest.avi"))
-    #ret, frame1 = cap.read()
     prvs = cv.cvtColor(frame1, cv.COLOR_BGR2GRAY)
     hsv = np.zeros_like(frame1)
     hsv[..., 1] = 255
 
-    for i in tqdm(range(1, 121)):
+    # Create and save a black image with the same shape as prvs
+    black_image = np.zeros_like(prvs)
+    cv.imwrite(f'{dest+os.sep}cam{cam_num}{os.sep}env{env_num}{os.sep}frame0.png', black_image)
+
+    for i in tqdm(range(1, 211)):
         frame2_source = source +os.sep+ f"cam{cam_num}{os.sep}env{env_num}{os.sep}frame{i}.png"
 
         frame2 = cv.imread(frame2_source)
