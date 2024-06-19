@@ -19,7 +19,9 @@ def get_flow_and_save(source, dest, env_num, cam_num):
     black_image = np.zeros_like(prvs)
     cv.imwrite(f'{dest+os.sep}cam{cam_num}{os.sep}env{env_num}{os.sep}frame0.png', black_image)
 
-    for i in tqdm(range(1, 211)):
+    frames_num = max([int(f.replace("frame", "").replace(".png", "")) for f in os.listdir(source +os.sep+ f"cam{cam_num}{os.sep}env{env_num}")])
+    
+    for i in tqdm(range(1, frames_num+1)):
         frame2_source = source +os.sep+ f"cam{cam_num}{os.sep}env{env_num}{os.sep}frame{i}.png"
 
         frame2 = cv.imread(frame2_source)
@@ -36,11 +38,13 @@ def get_flow_and_save(source, dest, env_num, cam_num):
 
 
 def main():
-    camera_env_combunations = list(product([env_n for env_n in range(2)], [cam_n for cam_n in range(5)]))
     source = "/home/bart/project/IsaacGym_Preview_4_Package/isaacgym/IsaacGymEnvs-main/isaacgymenvs/recorded_data/cameras/rgb"
     dest = "/home/bart/project/IsaacGym_Preview_4_Package/isaacgym/IsaacGymEnvs-main/isaacgymenvs/recorded_data/cameras/flow"
 
-    for env_num, cam_num in tqdm(camera_env_combunations):
+    envs_num = max([int(f.replace("env", "")) for f in os.listdir(source +os.sep+ "cam0")])
+    camera_env_combinations = list(product([env_n for env_n in range(envs_num+1)], [cam_n for cam_n in range(5)]))
+
+    for env_num, cam_num in tqdm(camera_env_combinations):
         #get_flow_and_save(source, dest, env_num, cam_num)
         thread = threading.Thread(target=get_flow_and_save, args=(source, dest, env_num, cam_num))
         thread.start()
