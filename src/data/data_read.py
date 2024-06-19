@@ -27,28 +27,30 @@ class CustomDataset(Dataset):
         
         # Initialize lists to hold image paths and csv data
         self.data = dict()
-        self.data["cam0_rgb"] = []
-        self.data["cam1_rgb"] = []
-        self.data["boxes_pos"] = []
+        for key in data_dict_dir:
+            self.data[key] = []
 
         for env_num in self.env_dirs:
             sensor1_env_dir = os.path.join(sensor1_dir, env_num)
             sensor2_env_dir = os.path.join(sensor2_dir, env_num)
-            sensor3_env_file = os.path.join(sensor3_dir, env_num, 'cube0.csv')
+            
             
             # Get image files
             cam0_rgb = sorted(os.listdir(sensor1_env_dir), key = natural_sort_key)
             cam1_rgb = sorted(os.listdir(sensor2_env_dir), key = natural_sort_key)
             
-            # Read csv file
-            sensor3_df = pd.read_csv(sensor3_env_file)
             
             for img in cam0_rgb:
                 self.data["cam0_rgb"].append(os.path.join(sensor1_env_dir, img))
             for img in cam1_rgb:
                 self.data["cam1_rgb"].append(os.path.join(sensor2_env_dir, img))
             
+             # Read csv file
+            sensor3_env_file = os.path.join(sensor3_dir, env_num, 'cube0.csv')
+            sensor3_df = pd.read_csv(sensor3_env_file, header=None)
             self.data["boxes_pos"].extend(sensor3_df.values.tolist())
+
+    
     
     def __len__(self):
         return len(self.data["cam0_rgb"])
