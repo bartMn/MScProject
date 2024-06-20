@@ -126,7 +126,7 @@ class sequentialSampleDataset(Dataset):
 def test_single_samples():
 
     NUM_OF_CAMERAS = 5
-    camera_types = ["depth", "rgb", "segmented"]#, "flow"]
+    camera_types = ["depth", "rgb", "segmented", "flow"]
     data_root = "/home/bart/project/IsaacGym_Preview_4_Package/isaacgym/IsaacGymEnvs-main/isaacgymenvs/recorded_data"
 
     data_dict_dir = dict()
