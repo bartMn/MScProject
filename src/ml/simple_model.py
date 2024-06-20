@@ -28,7 +28,7 @@ class customFullyConnectedLayer(torch.nn.Module):
     suited for the problem of classifiation a ball into one of 15 classes 
     """
     
-    def __init__(self, neueons_in_hidden_layer: int = 50, dropout:float = 0.4):
+    def __init__(self, neueons_in_hidden_layer: int = 50, dropout:float = 0.4, size_of_input = 512, size_of_output = 1):
         """
         Initializes the fully connected layer.
 
@@ -39,8 +39,8 @@ class customFullyConnectedLayer(torch.nn.Module):
         
         super(customFullyConnectedLayer, self).__init__()
         
-        neurons_in = 512 #number of outpus from the resnet18 to the fully connected layer
-        neurons_out = 7 #number of image classes
+        neurons_in = size_of_input #number of outpus from the resnet18 to the fully connected layer
+        neurons_out = size_of_output #number of image classes
         
         self.lin1 = torch.nn.Linear(neurons_in, neueons_in_hidden_layer)
         self.relu = torch.nn.ReLU()
@@ -66,6 +66,45 @@ class customFullyConnectedLayer(torch.nn.Module):
         #x = self.softmax_out(x)
         
         return x
+    
+
+class CombinedResNet18(torch.nn.Module):
+    def __init__(self):
+        super(CombinedResNet18, self).__init__()
+        
+        # Load pretrained ResNet18 models
+        self.resnet18_1 = resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
+        self.resnet18_2 = resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
+        
+        # Freeze the parameters of the ResNet18 models
+        for param in self.resnet18_1.parameters():
+            param.requires_grad = False
+        for param in self.resnet18_2.parameters():
+            param.requires_grad = False
+        
+        # Remove the fully connected layers
+        self.resnet18_1.fc = torch.nn.Identity()
+        self.resnet18_2.fc = torch.nn.Identity()
+        
+        # Define a new fully connected layer
+        self.fc = torch.nn.Linear(512 * 2, 3)  # Adjust the output size as needed
+        
+
+    def forward(self, x):
+        # Pass through the two ResNet18 models
+        x1, x2 = x
+        out1 = self.resnet18_1(x1)
+        out2 = self.resnet18_2(x2)
+        
+        # Concatenate the outputs
+        combined = torch.cat((out1, out2), dim=1)
+        
+        # Pass through the fully connected layer
+        out = self.fc(combined)
+        
+        return out
+    
+
     
 class ModelClass():
     """
@@ -114,22 +153,7 @@ class ModelClass():
         
         #the rest is executed only when path_to_load_model is not given
         
-        self.model = resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
-        self.model.fc = customFullyConnectedLayer(neueons_in_hidden_layer = neueons_in_hidden_layer, dropout= dropout)
-
-        custom_fc_params = list(self.model.fc.parameters()) 
-
-        #freezing all parmeters
-        for param in self.model.parameters():
-            param.requires_grad = False 
-
-        #unfreezing parmeters in the fully connnected layer
-        for param in custom_fc_params:
-            param.requires_grad = True  
-
-        self.optimizer = Adam(filter(lambda p: p.requires_grad, self.model.parameters()), lr = learning_rate)
-        self.loss_fn = torch.nn.MSELoss()
-        self.model.to(self.device)
+        self.init_model(neueons_in_hidden_layer, dropout, learning_rate)
         
 
         NUM_OF_CAMERAS = 5
@@ -168,6 +192,32 @@ class ModelClass():
 
     
 
+    def init_model(self, neueons_in_hidden_layer, dropout, learning_rate):
+        
+        self.model = resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
+        self.size_of_output = 3
+        self.model.fc = customFullyConnectedLayer(neueons_in_hidden_layer = neueons_in_hidden_layer, dropout= dropout, size_of_output= self.size_of_output)
+
+        custom_fc_params = list(self.model.fc.parameters()) 
+
+        #freezing all parmeters
+        for param in self.model.parameters():
+            param.requires_grad = False 
+
+        #unfreezing parmeters in the fully connnected layer
+        for param in custom_fc_params:
+            param.requires_grad = True  
+
+        self.optimizer = Adam(filter(lambda p: p.requires_grad, self.model.parameters()), lr = learning_rate)
+        self.loss_fn = torch.nn.MSELoss()
+        self.model.to(self.device)
+
+
+    def get_inputs_and_labels(self, data):
+        
+        return data["cam0_rgb"].to(self.device), data["boxes_pos0"][:,  : self.size_of_output].to(self.device)
+
+
     def train_epoch(self, epoch_index: int) -> float:
         """
         Performs training for one epoch.
@@ -183,10 +233,10 @@ class ModelClass():
 
         for i, data in tqdm(enumerate(self.training_loader), total=len(self.training_loader)):
             # Every data instance is an input + label pair
-            inputs, labels = data["cam0_rgb"], data["boxes_pos0"]
+            inputs, labels = self.get_inputs_and_labels(data)
 
-            inputs = inputs.to(self.device)
-            labels = labels.to(self.device)
+            #inputs = inputs.to(self.device)
+            #labels = labels.to(self.device)
             # Zero your gradients for every batch!
             self.optimizer.zero_grad()
             # Make predictions for this batch
@@ -238,9 +288,9 @@ class ModelClass():
 
             epoch_vloss = 0.0
             for i, vdata in enumerate(self.validation_loader):
-                vinputs, vlabels = vdata["cam0_rgb"], vdata["boxes_pos0"]
-                vinputs = vinputs.to(self.device)
-                vlabels = vlabels.to(self.device)
+                vinputs, vlabels = self.get_inputs_and_labels(vdata)
+                #vinputs = vinputs.to(self.device)
+                #vlabels = vlabels.to(self.device)
                 voutputs = self.model(vinputs)
                 vloss = self.loss_fn(voutputs, vlabels)
                 epoch_vloss += vloss  
@@ -391,3 +441,21 @@ def plot_training(train_loss: np.ndarray, valid_loss: np.ndarray, save_path: str
        plt.close()
     else:
         plt.show()
+
+
+class twoCamsModel(ModelClass):
+
+
+    def init_model(self, neueons_in_hidden_layer, dropout, learning_rate):
+ 
+        self.size_of_output = 3
+        self.model = CombinedResNet18()
+
+        self.optimizer = Adam(filter(lambda p: p.requires_grad, self.model.parameters()), lr = learning_rate)
+        self.loss_fn = torch.nn.MSELoss()
+        self.model.to(self.device)
+
+
+    def get_inputs_and_labels(self, data):
+        
+        return ((data["cam0_rgb"].to(self.device), data["cam1_rgb"].to(self.device)), data["boxes_pos0"][:,  : self.size_of_output].to(self.device))
