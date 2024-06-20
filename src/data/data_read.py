@@ -39,12 +39,13 @@ class singleSampleDataset(Dataset):
                     # Read csv file
                     csv_env_file = os.path.join(data_dict_dir[dict_key], env_num, 'data.csv')
                     df = pd.read_csv(csv_env_file, header=None)
-                    self.data[dict_key].extend(df.values.tolist())
+                    self.data[dict_key].extend(df.values.tolist())  
 
-    
-    
+
+
     def __len__(self):
         return len(self.data["cam0_rgb"])
+
 
 
     def __getitem__(self, idx):
@@ -75,7 +76,7 @@ class sequentialSampleDataset(Dataset):
     def __init__(self, data_dict_dir, transform=None, sequence_length=3):
         self.transform = transform
         self.sequence_length = sequence_length
-        
+        self.env_boundaries = list()
         # Collect all env directories
         self.env_dirs = sorted(os.listdir(data_dict_dir["cam0_rgb"]))
         
@@ -85,6 +86,9 @@ class sequentialSampleDataset(Dataset):
             self.data[key] = []
 
         for env_num in self.env_dirs:
+
+            start_idx = len(self.data["cam0_rgb"])
+
             for dict_key in data_dict_dir:
                 if "cam" in dict_key:
                     cam_env_dir = os.path.join(data_dict_dir[dict_key], env_num)
@@ -97,11 +101,29 @@ class sequentialSampleDataset(Dataset):
                     csv_env_file = os.path.join(data_dict_dir[dict_key], env_num, 'data.csv')
                     df = pd.read_csv(csv_env_file, header=None)
                     self.data[dict_key].extend(df.values.tolist())
+            
+            end_idx = len(self.data["cam0_rgb"]) - 1
+            self.env_boundaries.append((start_idx, end_idx))
+
+
 
     def __len__(self):
-        return len(self.data["cam0_rgb"]) - self.sequence_length + 1
+        total_length = 0
+        for start, end in self.env_boundaries:
+            total_length += max(0, end - start + 1 - self.sequence_length + 1)
+        return total_length
+
+
 
     def __getitem__(self, idx):
+        
+        for start, end in self.env_boundaries:
+            env_length = end - start + 1 - self.sequence_length + 1
+            if idx < env_length:
+                idx = start + idx
+                break
+            idx -= env_length
+
         mulitisensory_sample = dict()
         for dict_key in self.data:
             if "cam" in dict_key:
