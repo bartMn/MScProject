@@ -32,3 +32,4 @@ outputs/
 *.hydra*
 /isaacgymenvs/wandb
 /isaacgymenvs/recorded_data
+../../results
