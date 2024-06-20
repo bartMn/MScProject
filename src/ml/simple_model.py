@@ -69,35 +69,29 @@ class customFullyConnectedLayer(torch.nn.Module):
     
 
 class CombinedResNet18(torch.nn.Module):
-    def __init__(self):
+    def __init__(self, neueons_in_hidden_layer, dropout, size_of_input, size_of_output, num_of_resnets = 2):
         super(CombinedResNet18, self).__init__()
         
-        # Load pretrained ResNet18 models
-        self.resnet18_1 = resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
-        self.resnet18_2 = resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
+        self.num_of_resnets = num_of_resnets
+        self.resnets_list = torch.nn.ModuleList()
+        for _ in range(num_of_resnets):
+            resnet = resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
+            for param in resnet.parameters():
+                param.requires_grad = False
+            resnet.fc = torch.nn.Identity()
+            self.resnets_list.append(resnet)
         
-        # Freeze the parameters of the ResNet18 models
-        for param in self.resnet18_1.parameters():
-            param.requires_grad = False
-        for param in self.resnet18_2.parameters():
-            param.requires_grad = False
-        
-        # Remove the fully connected layers
-        self.resnet18_1.fc = torch.nn.Identity()
-        self.resnet18_2.fc = torch.nn.Identity()
         
         # Define a new fully connected layer
-        self.fc = torch.nn.Linear(512 * 2, 3)  # Adjust the output size as needed
+        self.fc = torch.nn.Linear(512 * num_of_resnets, 3)  # Adjust the output size as needed
         
 
     def forward(self, x):
         # Pass through the two ResNet18 models
-        x1, x2 = x
-        out1 = self.resnet18_1(x1)
-        out2 = self.resnet18_2(x2)
-        
+        out_combined = [self.resnets_list[i](x[i]) for i in range(self.num_of_resnets)]
+
         # Concatenate the outputs
-        combined = torch.cat((out1, out2), dim=1)
+        combined = torch.cat(out_combined, dim=1)
         
         # Pass through the fully connected layer
         out = self.fc(combined)
@@ -138,6 +132,9 @@ class ModelClass():
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.save_path = save_path
+        if not os.path.exists(self.save_path):
+            os.mkdir(self.save_path)
+
         self.epochs_num = epochs_num
         
         if path_to_load_model:
@@ -449,7 +446,12 @@ class twoCamsModel(ModelClass):
     def init_model(self, neueons_in_hidden_layer, dropout, learning_rate):
  
         self.size_of_output = 3
-        self.model = CombinedResNet18()
+        num_of_resnets = 2
+        self.model = CombinedResNet18(neueons_in_hidden_layer = neueons_in_hidden_layer,
+                                      dropout = dropout,
+                                      size_of_input = num_of_resnets*512,
+                                      size_of_output = 3, 
+                                      num_of_resnets= num_of_resnets)
 
         self.optimizer = Adam(filter(lambda p: p.requires_grad, self.model.parameters()), lr = learning_rate)
         self.loss_fn = torch.nn.MSELoss()
@@ -459,3 +461,27 @@ class twoCamsModel(ModelClass):
     def get_inputs_and_labels(self, data):
         
         return ((data["cam0_rgb"].to(self.device), data["cam1_rgb"].to(self.device)), data["boxes_pos0"][:,  : self.size_of_output].to(self.device))
+    
+
+
+class fiveDepthCamsModel(ModelClass):
+
+
+    def init_model(self, neueons_in_hidden_layer, dropout, learning_rate):
+ 
+        self.size_of_output = 3
+        num_of_resnets = 5
+        self.model = CombinedResNet18(neueons_in_hidden_layer = neueons_in_hidden_layer,
+                                      dropout = dropout,
+                                      size_of_input = num_of_resnets*512,
+                                      size_of_output = 3, 
+                                      num_of_resnets= num_of_resnets)
+
+        self.optimizer = Adam(filter(lambda p: p.requires_grad, self.model.parameters()), lr = learning_rate)
+        self.loss_fn = torch.nn.MSELoss()
+        self.model.to(self.device)
+
+
+    def get_inputs_and_labels(self, data):
+        
+        return ((data["cam0_depth"].to(self.device), data["cam1_depth"].to(self.device), data["cam1_depth"].to(self.device), data["cam3_depth"].to(self.device), data["cam4_depth"].to(self.device)), data["boxes_pos0"][:,  : self.size_of_output].to(self.device))
