@@ -555,27 +555,3 @@ class multiModalClass(ModelClass):
         
         return ([data[data_key].to(self.device) for data_key in self.input_data_keys], data["boxes_pos0"][:,  : self.size_of_output].to(self.device))
     
-"""
-class depthAndAllFrankaDataModel(ModelClass):
-
-
-    def init_model(self, neueons_in_hidden_layer = 50, dropout = 0.4, learning_rate = 0.1):
- 
-        self.size_of_output = 3
-        num_of_resnets = 5
-        self.model = fiveDepthAndAllFrankaModel(neueons_in_hidden_layer = neueons_in_hidden_layer,
-                                                dropout = dropout,
-                                                size_of_input = num_of_resnets*512,
-                                                size_of_output = 3, 
-                                                num_of_resnets= num_of_resnets)
-
-        self.optimizer = Adam(filter(lambda p: p.requires_grad, self.model.parameters()), lr = learning_rate)
-        self.loss_fn = torch.nn.MSELoss()
-        self.model.to(self.device)
-
-
-    def get_inputs_and_labels(self, data):
-        
-        return ((data["cam0_depth"].to(self.device), data["cam1_depth"].to(self.device), data["cam1_depth"].to(self.device), data["cam3_depth"].to(self.device), data["cam4_depth"].to(self.device), data["franka_actions"].to(self.device), data["franka_forces"].to(self.device), data["franka_state"].to(self.device)), data["boxes_pos0"][:,  : self.size_of_output].to(self.device))
-
-"""
