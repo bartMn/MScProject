@@ -493,7 +493,7 @@ def plot_training(train_loss: np.ndarray, valid_loss: np.ndarray, best_valid_los
         file.write(f"best validation epoch num: {best_valid_loss_epoch_num}" "\n")
         
 
-class twoCamsModel(ModelClass):
+class twoCamsModelClass(ModelClass):
 
 
     def init_model(self, neueons_in_hidden_layer = 50, dropout = 0.4, learning_rate = 0.1):
