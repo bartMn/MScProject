@@ -21,12 +21,13 @@ class singleSampleDataset(Dataset):
         
         # Initialize lists to hold image paths and csv data
         self.data = dict()
+        self.key_to_check_len = None
         for key in data_dict_dir:
             self.data[key] = []
 
         for env_num in self.env_dirs:
             for dict_key in data_dict_dir:
-
+                self.key_to_check_len = dict_key
                 if "cam" in dict_key:
                     cam_env_dir = os.path.join(data_dict_dir[dict_key], env_num)
                     # Get image files
@@ -45,7 +46,7 @@ class singleSampleDataset(Dataset):
 
 
     def __len__(self):
-        return len(self.data["cam0_depth"])
+        return len(self.data[self.key_to_check_len])
 
 
 
@@ -81,6 +82,8 @@ class singleSampleDataset(Dataset):
         for key in all_keys:
             if key not in used_keys:
                 self.data.pop(key)
+        
+        self.key_to_check_len = used_keys[0]
 
   
 class sequentialSampleDataset(Dataset):
