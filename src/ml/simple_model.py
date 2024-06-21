@@ -474,7 +474,7 @@ def plot_training(train_loss: np.ndarray, valid_loss: np.ndarray, best_valid_los
     # Add labels and a title
     plt.xlabel('epoch num')
     plt.ylabel('loss')
-    plt.ylim(0, 35*1000)
+    plt.ylim(0, 300)
     #plt.title('loss over epochs')
 
     # Add a legend
