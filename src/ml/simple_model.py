@@ -83,8 +83,9 @@ class CombinedResNet18(torch.nn.Module):
         
         
         # Define a new fully connected layer
-        self.fc = torch.nn.Linear(512 * num_of_resnets, 3)  # Adjust the output size as needed
+        self.fc = customFullyConnectedLayer(size_of_input = 512 * num_of_resnets, size_of_output = 3)  # Adjust the output size as needed
         
+
 
     def forward(self, x):
         # Pass through the two ResNet18 models
@@ -99,6 +100,42 @@ class CombinedResNet18(torch.nn.Module):
         return out
     
 
+class multimodalMoldel(torch.nn.Module):
+    def __init__(self, neueons_in_hidden_layer, dropout, size_of_output, num_of_resnets, linear_inputs_sizes):
+        super(multimodalMoldel, self).__init__()
+        
+        self.num_of_resnets = num_of_resnets
+        self.linear_inputs_sizes = linear_inputs_sizes
+        
+        self.resnets_list = torch.nn.ModuleList()
+        for _ in range(self.num_of_resnets):
+            resnet = resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
+            for param in resnet.parameters():
+                param.requires_grad = False
+            resnet.fc = torch.nn.Identity()
+            self.resnets_list.append(resnet)
+        
+        
+        # Define a new fully connected layer
+        self.fc = customFullyConnectedLayer(size_of_input = 512 * self.num_of_resnets + sum(linear_inputs_sizes), size_of_output = size_of_output)
+        
+
+    def forward(self, x):
+        # Pass through the two ResNet18 models
+        out_combined = list()
+        out_combined = [self.resnets_list[i](x[i]) for i in range(self.num_of_resnets)]
+        
+        for i in range(len(self.linear_inputs_sizes)):
+            out_combined.append(x[i+self.num_of_resnets])
+
+        # Concatenate the outputs
+        combined = torch.cat(out_combined, dim=1)
+        
+        # Pass through the fully connected layer
+        out = self.fc(combined)
+        
+        return out
+
     
 class ModelClass():
     """
@@ -110,9 +147,6 @@ class ModelClass():
                  train_val_split:float=0.9,
                  batch_size:int=32,
                  epochs_num:int=20,
-                 neueons_in_hidden_layer = 50,
-                 learning_rate:float = 0.1,
-                 dropout:float = 0.4,
                  save_path:str=None,
                  path_to_load_model:str=None) -> None:
         """
@@ -147,11 +181,7 @@ class ModelClass():
             self.model = torch.load(path_to_load_model, map_location=self.device)
             self.model.to(self.device)
             return
-        
-        #the rest is executed only when path_to_load_model is not given
-        
-        self.init_model(neueons_in_hidden_layer, dropout, learning_rate)
-        
+      
 
         NUM_OF_CAMERAS = 5
         camera_types = ["depth", "rgb", "segmented", "flow"]
@@ -171,10 +201,20 @@ class ModelClass():
             for camera_type in camera_types:
                 data_dict_dir[f"cam{cam_num}_{camera_type}"] = f"{data_root}{os.sep}cameras{os.sep}{camera_type}{os.sep}cam{cam_num}"
 
+        #transform = transforms.Compose([
+        #    transforms.Resize((224, 224)),
+        #    transforms.ToTensor()
+        #])
+
         transform = transforms.Compose([
-            transforms.Resize((224, 224)),
-            transforms.ToTensor()
-        ])
+                                    transforms.Resize(256),         # Resize the image to 256x256 pixels
+                                    transforms.CenterCrop(224),     # Crop the center to 224x224 pixels
+                                    transforms.ToTensor(),           # Convert the image to a PyTorch tensor
+                                    transforms.Normalize(
+                                                        mean=[0.485, 0.456, 0.406],  # Normalize the image based on ImageNet statistics
+                                                        std=[0.229, 0.224, 0.225]
+                                                        )
+                                    ])
 
         
         torch.manual_seed(0) #added maual seed to make sure the random split is the same every time
@@ -187,9 +227,9 @@ class ModelClass():
         self.training_loader = DataLoader(training_set, batch_size=batch_size, shuffle=True, num_workers=7)
         self.validation_loader = DataLoader(validation_set, batch_size=batch_size, shuffle=True, num_workers=3)
 
-    
 
-    def init_model(self, neueons_in_hidden_layer, dropout, learning_rate):
+
+    def init_model(self, neueons_in_hidden_layer = 50, dropout = 0.4, learning_rate = 0.1):
         
         self.model = resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
         self.size_of_output = 3
@@ -426,6 +466,7 @@ def plot_training(train_loss: np.ndarray, valid_loss: np.ndarray, save_path: str
     # Add labels and a title
     plt.xlabel('epoch num')
     plt.ylabel('loss')
+    plt.ylim(0, 35*1000)
     #plt.title('loss over epochs')
 
     # Add a legend
@@ -443,7 +484,7 @@ def plot_training(train_loss: np.ndarray, valid_loss: np.ndarray, save_path: str
 class twoCamsModel(ModelClass):
 
 
-    def init_model(self, neueons_in_hidden_layer, dropout, learning_rate):
+    def init_model(self, neueons_in_hidden_layer = 50, dropout = 0.4, learning_rate = 0.1):
  
         self.size_of_output = 3
         num_of_resnets = 2
@@ -464,18 +505,33 @@ class twoCamsModel(ModelClass):
     
 
 
-class fiveDepthCamsModel(ModelClass):
+class multiModalClass(ModelClass):
 
 
-    def init_model(self, neueons_in_hidden_layer, dropout, learning_rate):
+    def init_model(self, neueons_in_hidden_layer = 50, dropout = 0.4, learning_rate = 0.1, input_data_keys = None):
  
+        self.input_data_keys = input_data_keys
         self.size_of_output = 3
-        num_of_resnets = 5
-        self.model = CombinedResNet18(neueons_in_hidden_layer = neueons_in_hidden_layer,
+
+        num_of_cam_data = 0
+        size_for_non_cam_data = list()
+        for i, data in enumerate(self.training_loader):
+            read_data, _= self.get_inputs_and_labels(data)
+            for data_in in read_data:
+                
+                if len(data_in.shape) > 2:
+                   num_of_cam_data  += 1 
+                else:
+                    size_for_non_cam_data.append(data_in.shape[1])
+            break
+
+
+        self.model = multimodalMoldel(neueons_in_hidden_layer = neueons_in_hidden_layer,
                                       dropout = dropout,
-                                      size_of_input = num_of_resnets*512,
-                                      size_of_output = 3, 
-                                      num_of_resnets= num_of_resnets)
+                                      size_of_output = 3,
+                                      num_of_resnets= num_of_cam_data,
+                                      linear_inputs_sizes = size_for_non_cam_data
+                                      )
 
         self.optimizer = Adam(filter(lambda p: p.requires_grad, self.model.parameters()), lr = learning_rate)
         self.loss_fn = torch.nn.MSELoss()
@@ -484,4 +540,29 @@ class fiveDepthCamsModel(ModelClass):
 
     def get_inputs_and_labels(self, data):
         
-        return ((data["cam0_depth"].to(self.device), data["cam1_depth"].to(self.device), data["cam1_depth"].to(self.device), data["cam3_depth"].to(self.device), data["cam4_depth"].to(self.device)), data["boxes_pos0"][:,  : self.size_of_output].to(self.device))
+        return ([data[data_key].to(self.device) for data_key in self.input_data_keys], data["boxes_pos0"][:,  : self.size_of_output].to(self.device))
+    
+"""
+class depthAndAllFrankaDataModel(ModelClass):
+
+
+    def init_model(self, neueons_in_hidden_layer = 50, dropout = 0.4, learning_rate = 0.1):
+ 
+        self.size_of_output = 3
+        num_of_resnets = 5
+        self.model = fiveDepthAndAllFrankaModel(neueons_in_hidden_layer = neueons_in_hidden_layer,
+                                                dropout = dropout,
+                                                size_of_input = num_of_resnets*512,
+                                                size_of_output = 3, 
+                                                num_of_resnets= num_of_resnets)
+
+        self.optimizer = Adam(filter(lambda p: p.requires_grad, self.model.parameters()), lr = learning_rate)
+        self.loss_fn = torch.nn.MSELoss()
+        self.model.to(self.device)
+
+
+    def get_inputs_and_labels(self, data):
+        
+        return ((data["cam0_depth"].to(self.device), data["cam1_depth"].to(self.device), data["cam1_depth"].to(self.device), data["cam3_depth"].to(self.device), data["cam4_depth"].to(self.device), data["franka_actions"].to(self.device), data["franka_forces"].to(self.device), data["franka_state"].to(self.device)), data["boxes_pos0"][:,  : self.size_of_output].to(self.device))
+
+"""
