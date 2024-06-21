@@ -44,7 +44,7 @@ class singleSampleDataset(Dataset):
 
 
     def __len__(self):
-        return len(self.data["cam0_rgb"])
+        return len(self.data["cam0_depth"])
 
 
 
@@ -71,6 +71,16 @@ class singleSampleDataset(Dataset):
         
         return mulitisensory_sample
   
+
+    def remove_unused_keys(self, used_keys):
+
+        all_keys = list()
+        for key in self.data:
+            all_keys.append(key)
+        for key in all_keys:
+            if key not in used_keys:
+                self.data.pop(key)
+
   
 class sequentialSampleDataset(Dataset):
     def __init__(self, data_dict_dir, transform=None, sequence_length=3):

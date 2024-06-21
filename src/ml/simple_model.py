@@ -42,10 +42,13 @@ class customFullyConnectedLayer(torch.nn.Module):
         neurons_in = size_of_input #number of outpus from the resnet18 to the fully connected layer
         neurons_out = size_of_output #number of image classes
         
-        self.lin1 = torch.nn.Linear(neurons_in, neueons_in_hidden_layer)
+        self.lin1 = torch.nn.Linear(neurons_in, 512)
         self.relu = torch.nn.ReLU()
         self.dropout1 = torch.nn.Dropout(p=dropout)
-        self.lin2 = torch.nn.Linear(neueons_in_hidden_layer, neurons_out)
+        self.lin2 = torch.nn.Linear(512, 128)
+        self.relu = torch.nn.ReLU()
+        self.dropout2 = torch.nn.Dropout(p=dropout)
+        self.lin_out = torch.nn.Linear(128, neurons_out)
         #self.softmax_out = torch.nn.Softmax(dim=1)
         
     def forward(self, x):
@@ -63,6 +66,9 @@ class customFullyConnectedLayer(torch.nn.Module):
         x = self.relu(x)
         x = self.dropout1(x)
         x = self.lin2(x)
+        x = self.relu(x)
+        x = self.dropout2(x)
+        x = self.lin_out(x)
         #x = self.softmax_out(x)
         
         return x
@@ -148,7 +154,8 @@ class ModelClass():
                  batch_size:int=32,
                  epochs_num:int=20,
                  save_path:str=None,
-                 path_to_load_model:str=None) -> None:
+                 path_to_load_model:str=None,
+                 input_data_keys:str = None) -> None:
         """
         Initialize the ResNet model for image classification.
 
@@ -220,6 +227,7 @@ class ModelClass():
         torch.manual_seed(0) #added maual seed to make sure the random split is the same every time
 
         full_training_set = singleSampleDataset(data_dict_dir, transform=transform)
+        full_training_set.remove_unused_keys(input_data_keys + ["boxes_pos0"])
         train_size = int(train_val_split * len(full_training_set))
         val_size = len(full_training_set) - train_size
         training_set, validation_set = random_split(full_training_set, [train_size, val_size])
@@ -369,7 +377,7 @@ class ModelClass():
             
         """
         
-        plot_training(train_loss, valid_loss, self.save_path)    
+        plot_training(train_loss, valid_loss, best_vloss, best_epochs, self.save_path)    
 
         return train_loss, valid_loss
 
@@ -448,7 +456,7 @@ class ModelClass():
         return total_preds, total_accuracy, F1, total_pred_per_class, correct_pred_per_class, predictions_for_each_label
 
 
-def plot_training(train_loss: np.ndarray, valid_loss: np.ndarray, save_path: str = None) -> None:
+def plot_training(train_loss: np.ndarray, valid_loss: np.ndarray, best_valid_loss:float, best_valid_loss_epoch_num: int,  save_path: str = None) -> None:
     """
     Plot the training and validation loss over epochs.
 
@@ -480,6 +488,10 @@ def plot_training(train_loss: np.ndarray, valid_loss: np.ndarray, save_path: str
     else:
         plt.show()
 
+    with open(os.path.join(save_path, "best_valid_loss.txt"), "w") as file:
+        file.write(f"best validation loss: {best_valid_loss}" "\n")
+        file.write(f"best validation epoch num: {best_valid_loss_epoch_num}" "\n")
+        
 
 class twoCamsModel(ModelClass):
 
@@ -515,6 +527,7 @@ class multiModalClass(ModelClass):
 
         num_of_cam_data = 0
         size_for_non_cam_data = list()
+
         for i, data in enumerate(self.training_loader):
             read_data, _= self.get_inputs_and_labels(data)
             for data_in in read_data:
