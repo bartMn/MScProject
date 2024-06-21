@@ -39,6 +39,7 @@ class singleSampleDataset(Dataset):
                     # Read csv file
                     csv_env_file = os.path.join(data_dict_dir[dict_key], env_num, 'data.csv')
                     df = pd.read_csv(csv_env_file, header=None)
+                    df = df * 100
                     self.data[dict_key].extend(df.values.tolist())  
 
 
