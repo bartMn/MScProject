@@ -227,6 +227,8 @@ class ModelClass():
         torch.manual_seed(0) #added maual seed to make sure the random split is the same every time
 
         full_training_set = singleSampleDataset(data_dict_dir, transform=transform)
+        self.csv_min_max = full_training_set.csv_min_max.copy()
+
         full_training_set.remove_unused_keys(input_data_keys + ["boxes_pos0"])
         train_size = int(train_val_split * len(full_training_set))
         val_size = len(full_training_set) - train_size
@@ -297,6 +299,14 @@ class ModelClass():
         return running_loss / (i+1)
    
     
+    def denormalize(self, data, key):
+        min_val, max_val = self.csv_min_max[key]
+        if not isinstance(min_val, torch.Tensor):
+            min_val = torch.tensor(min_val[ : self.size_of_output], device=self.device, dtype=data.dtype)
+        if not isinstance(max_val, torch.Tensor):
+            max_val = torch.tensor(max_val[ : self.size_of_output], device=self.device, dtype=data.dtype)
+        return data * (max_val - min_val) + min_val
+
 
     def train_model(self, epochs: int = None, save_pt_model:bool = False) -> Tuple[np.ndarray, np.ndarray]:
         """
@@ -332,16 +342,19 @@ class ModelClass():
             self.model.train(False)  
 
             epoch_vloss = 0.0
+            epoch_vloss_in_original_scale = 0.0
             for i, vdata in enumerate(self.validation_loader):
                 vinputs, vlabels = self.get_inputs_and_labels(vdata)
-                #vinputs = vinputs.to(self.device)
-                #vlabels = vlabels.to(self.device)
                 voutputs = self.model(vinputs)
                 vloss = self.loss_fn(voutputs, vlabels)
-                epoch_vloss += vloss  
+                epoch_vloss += vloss
+
+                vloss_in_original_scale = self.loss_fn(self.denormalize(voutputs, "boxes_pos0"), self.denormalize(vlabels, "boxes_pos0"))
+                epoch_vloss_in_original_scale += vloss_in_original_scale
 
             avg_vloss = epoch_vloss / (i + 1)
-            print(f'LOSS train: {avg_loss} valid: {avg_vloss}')
+            avg_vloss_n_original_scale = epoch_vloss_in_original_scale / (i + 1)
+            print(f'LOSS train: {avg_loss} valid: {avg_vloss}, valid (in m): {avg_vloss_n_original_scale}')
             train_loss[current_epoch] = avg_loss
             valid_loss[current_epoch] = avg_vloss   
             

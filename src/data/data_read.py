@@ -1,6 +1,7 @@
 import os
 from PIL import Image
 import pandas as pd
+import numpy as np
 from torch.utils.data import Dataset, DataLoader
 import torchvision.transforms as transforms
 import torch
@@ -40,8 +41,14 @@ class singleSampleDataset(Dataset):
                     # Read csv file
                     csv_env_file = os.path.join(data_dict_dir[dict_key], env_num, 'data.csv')
                     df = pd.read_csv(csv_env_file, header=None)
-                    df = df * 100
                     self.data[dict_key].extend(df.values.tolist())  
+                
+        self.csv_min_max = {}
+        for key, data in self.data.items():
+            if "cam" in key:
+                continue
+            data = np.array(data)
+            self.csv_min_max[key] = (data.min(axis=0), data.max(axis=0))
 
 
 
@@ -66,8 +73,11 @@ class singleSampleDataset(Dataset):
                     #sensor2_image = self.transform(sensor2_image)
 
             else:
+
+                min_val, max_val = self.csv_min_max[dict_key]
                 # Read CSV row
                 read_data = self.data[dict_key][idx]
+                read_data = (read_data - min_val) / (max_val - min_val) 
                 # Convert CSV row to tensor
                 mulitisensory_sample[dict_key] = torch.tensor(read_data, dtype=torch.float)
         
