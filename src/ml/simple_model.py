@@ -421,7 +421,7 @@ class ModelClass():
                     voutputs = self.model(vinputs)
                     vloss = self.loss_fn(voutputs, vlabels)
                     epoch_vloss += vloss
-    
+
                     vloss_in_original_scale = self.loss_fn(self.denormalize(voutputs, "boxes_pos0"), self.denormalize(vlabels, "boxes_pos0"))
                     epoch_vloss_in_original_scale += vloss_in_original_scale
 
@@ -560,7 +560,7 @@ def plot_training(train_loss: np.ndarray, valid_loss: np.ndarray, best_valid_los
     # Add labels and a title
     plt.xlabel('epoch num')
     plt.ylabel('loss')
-    plt.ylim(0, 300)
+    plt.ylim(0, 0.025)
     #plt.title('loss over epochs')
 
     # Add a legend
