@@ -74,6 +74,50 @@ class customFullyConnectedLayer(torch.nn.Module):
         return x
     
 
+class customCNN(torch.nn.Module):
+    """
+    This class is used to create a fully conected
+    suited for the problem of classifiation a ball into one of 15 classes 
+    """
+    
+    def __init__(self, neueons_in_hidden_layer: int = 50, dropout:float = 0.4, size_of_input = 512, size_of_output = 1):
+        """
+        Initializes the fully connected layer.
+
+        Args:
+            neurons_in_hidden_layer (int, optional): The number of neurons in the hidden layer. Defaults to 50.
+            dropout (float, optional): The dropout rate for regularization in the hidden layer. Defaults to 0.4.
+        """
+        
+        super(customCNN, self).__init__()
+        
+        # initialize first set of CONV => RELU => POOL layers
+        self.conv1 = torch.nn.Conv2d(in_channels=25, out_channels=20, kernel_size=(5, 5))
+        self.relu1 = torch.nn.ReLU()
+        self.maxpool1 = torch.nn.MaxPool2d(kernel_size=(2, 2), stride=(2, 2))
+        # initialize second set of CONV => RELU => POOL layers
+        self.conv2 = torch.nn.Conv2d(in_channels=20, out_channels=50, kernel_size=(5, 5))
+        self.relu2 = torch.nn.ReLU()
+        self.maxpool2 = torch.nn.MaxPool2d(kernel_size=(2, 2), stride=(2, 2))
+
+        
+    def forward(self, x):
+        
+        x = self.conv1(x)
+        x = self.relu1(x)
+        x = self.maxpool1(x)
+        x = self.conv2(x)
+        x = self.relu2(x)
+        x = self.maxpool2(x)
+              
+        print(f"combined.shape = {x.shape}")
+        exit()
+        #x = self.softmax_out(x)
+        
+        return x
+    
+
+
 class CombinedResNet18(torch.nn.Module):
     def __init__(self, neueons_in_hidden_layer, dropout, size_of_input, size_of_output, num_of_resnets = 2):
         super(CombinedResNet18, self).__init__()
@@ -136,7 +180,6 @@ class multimodalMoldel(torch.nn.Module):
 
         # Concatenate the outputs
         combined = torch.cat(out_combined, dim=1)
-        
         # Pass through the fully connected layer
         out = self.fc(combined)
         
