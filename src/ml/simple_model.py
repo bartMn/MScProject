@@ -80,7 +80,7 @@ class customCNN(torch.nn.Module):
     suited for the problem of classifiation a ball into one of 15 classes 
     """
     
-    def __init__(self, neueons_in_hidden_layer: int = 50, dropout:float = 0.4, size_of_input = 512, size_of_output = 1):
+    def __init__(self):
         """
         Initializes the fully connected layer.
 
@@ -92,28 +92,56 @@ class customCNN(torch.nn.Module):
         super(customCNN, self).__init__()
         
         # initialize first set of CONV => RELU => POOL layers
-        self.conv1 = torch.nn.Conv2d(in_channels=25, out_channels=20, kernel_size=(5, 5))
+        self.conv1 = torch.nn.Conv2d(in_channels=3, out_channels=16, kernel_size=(5, 5))
         self.relu1 = torch.nn.ReLU()
         self.maxpool1 = torch.nn.MaxPool2d(kernel_size=(2, 2), stride=(2, 2))
         # initialize second set of CONV => RELU => POOL layers
-        self.conv2 = torch.nn.Conv2d(in_channels=20, out_channels=50, kernel_size=(5, 5))
+        self.conv2 = torch.nn.Conv2d(in_channels=16, out_channels=32, kernel_size=(5, 5))
         self.relu2 = torch.nn.ReLU()
         self.maxpool2 = torch.nn.MaxPool2d(kernel_size=(2, 2), stride=(2, 2))
+
+        self.conv3 = torch.nn.Conv2d(in_channels=32, out_channels=32, kernel_size=(5, 5))
+        self.relu3 = torch.nn.ReLU()
+        self.maxpool3 = torch.nn.MaxPool2d(kernel_size=(2, 2), stride=(2, 2))
+
+        self.conv4 = torch.nn.Conv2d(in_channels=32, out_channels=16, kernel_size=(5, 5))
+        self.relu4 = torch.nn.ReLU()
+        self.maxpool4 = torch.nn.MaxPool2d(kernel_size=(2, 2), stride=(2, 2))
+
+        self.conv5 = torch.nn.Conv2d(in_channels=16, out_channels=16, kernel_size=(5, 5))
+        self.relu5 = torch.nn.ReLU()
+        self.maxpool5 = torch.nn.MaxPool2d(kernel_size=(2, 2), stride=(2, 2))
 
         
     def forward(self, x):
         
+        #x = torch.flatten(x, 1)
+        #print(f"combined.shape = {x.shape}")
+        #exit()
         x = self.conv1(x)
         x = self.relu1(x)
         x = self.maxpool1(x)
+
         x = self.conv2(x)
         x = self.relu2(x)
         x = self.maxpool2(x)
-              
-        print(f"combined.shape = {x.shape}")
-        exit()
-        #x = self.softmax_out(x)
         
+        x = self.conv3(x)
+        x = self.relu3(x)
+        x = self.maxpool3(x)
+        
+        x = self.conv4(x)
+        x = self.relu4(x)
+        x = self.maxpool4(x)
+        
+        x = self.conv5(x)
+        x = self.relu5(x)
+        x = self.maxpool5(x)
+        
+
+        x = torch.flatten(x, 1)
+        #print(f"combined.shape = {x.shape}")
+        #exit()
         return x
     
 
@@ -159,15 +187,16 @@ class multimodalMoldel(torch.nn.Module):
         
         self.resnets_list = torch.nn.ModuleList()
         for _ in range(self.num_of_resnets):
-            resnet = resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
-            for param in resnet.parameters():
-                param.requires_grad = False
-            resnet.fc = torch.nn.Identity()
+            #resnet = resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
+            #for param in resnet.parameters():
+            #    param.requires_grad = False
+            #resnet.fc = torch.nn.Identity()
+            resnet = customCNN()
             self.resnets_list.append(resnet)
         
         
         # Define a new fully connected layer
-        self.fc = customFullyConnectedLayer(size_of_input = 512 * self.num_of_resnets + sum(linear_inputs_sizes), size_of_output = size_of_output)
+        self.fc = customFullyConnectedLayer(size_of_input = 144 * self.num_of_resnets + sum(linear_inputs_sizes), size_of_output = size_of_output)
         
 
     def forward(self, x):
@@ -386,14 +415,15 @@ class ModelClass():
 
             epoch_vloss = 0.0
             epoch_vloss_in_original_scale = 0.0
-            for i, vdata in enumerate(self.validation_loader):
-                vinputs, vlabels = self.get_inputs_and_labels(vdata)
-                voutputs = self.model(vinputs)
-                vloss = self.loss_fn(voutputs, vlabels)
-                epoch_vloss += vloss
-
-                vloss_in_original_scale = self.loss_fn(self.denormalize(voutputs, "boxes_pos0"), self.denormalize(vlabels, "boxes_pos0"))
-                epoch_vloss_in_original_scale += vloss_in_original_scale
+            with torch.no_grad():
+                for i, vdata in enumerate(self.validation_loader):
+                    vinputs, vlabels = self.get_inputs_and_labels(vdata)
+                    voutputs = self.model(vinputs)
+                    vloss = self.loss_fn(voutputs, vlabels)
+                    epoch_vloss += vloss
+    
+                    vloss_in_original_scale = self.loss_fn(self.denormalize(voutputs, "boxes_pos0"), self.denormalize(vlabels, "boxes_pos0"))
+                    epoch_vloss_in_original_scale += vloss_in_original_scale
 
             avg_vloss = epoch_vloss / (i + 1)
             avg_vloss_n_original_scale = epoch_vloss_in_original_scale / (i + 1)
