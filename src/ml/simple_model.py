@@ -20,6 +20,7 @@ module_path = os.path.join(module_path, f"..")
 if module_path not in sys.path:
     sys.path.append(module_path)
 from data.data_read import singleSampleDataset, test_single_samples
+torch.backends.cudnn.enabled = False
 
 
 class customFullyConnectedLayer(torch.nn.Module):
