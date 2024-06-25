@@ -60,7 +60,7 @@ class singleSampleDataset(Dataset):
     def __getitem__(self, idx):
         
         mulitisensory_sample = dict()
-
+        epsilon=1e-8
         for dict_key in self.data:
                 
             if "cam" in dict_key:
@@ -76,8 +76,14 @@ class singleSampleDataset(Dataset):
 
                 min_val, max_val = self.csv_min_max[dict_key]
                 # Read CSV row
+                min_val = np.array(min_val, dtype=np.float32)
+                max_val = np.array(max_val, dtype=np.float32)
+                denominator = max_val - min_val
+                denominator = np.where(denominator == 0, epsilon, denominator)
+                
                 read_data = self.data[dict_key][idx]
-                read_data = (read_data - min_val) / (max_val - min_val) 
+                read_data = np.array(read_data, dtype=np.float32)
+                read_data = (read_data - min_val) / denominator
                 # Convert CSV row to tensor
                 mulitisensory_sample[dict_key] = torch.tensor(read_data, dtype=torch.float)
         

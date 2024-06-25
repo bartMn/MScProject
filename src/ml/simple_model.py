@@ -371,13 +371,17 @@ class ModelClass():
         return running_loss / (i+1)
    
     
-    def denormalize(self, data, key):
+    def denormalize(self, data, key, epsilon=1e-8):
         min_val, max_val = self.csv_min_max[key]
         if not isinstance(min_val, torch.Tensor):
             min_val = torch.tensor(min_val[ : self.size_of_output], device=self.device, dtype=data.dtype)
         if not isinstance(max_val, torch.Tensor):
             max_val = torch.tensor(max_val[ : self.size_of_output], device=self.device, dtype=data.dtype)
-        return data * (max_val - min_val) + min_val
+
+        numerator = max_val - min_val
+        numerator = torch.where(numerator == 0, epsilon, numerator)
+        
+        return data * numerator + min_val
 
 
     def train_model(self, epochs: int = None, save_pt_model:bool = False) -> Tuple[np.ndarray, np.ndarray]:
@@ -401,6 +405,7 @@ class ModelClass():
         train_loss = np.zeros(epochs)
         valid_loss = np.zeros(epochs)
         best_vloss = float('inf')
+        best_avg_vloss_n_original_scale = float('inf')
         best_epoch_model = deepcopy(self.model)
         best_epochs = 0
         
@@ -433,6 +438,7 @@ class ModelClass():
             
             if avg_vloss < best_vloss:
                 best_vloss = avg_vloss
+                best_avg_vloss_n_original_scale = avg_vloss_n_original_scale
                 best_epoch_model = deepcopy(self.model)
                 best_epochs = current_epoch
 
@@ -462,8 +468,7 @@ class ModelClass():
                 torch.save(best_epoch_model, os.path.join(self.save_path, "resnet18_model.pt"))
             
         """
-        
-        plot_training(train_loss, valid_loss, best_vloss, best_epochs, self.save_path)    
+        plot_training(train_loss, valid_loss, best_vloss, best_epochs, best_avg_vloss_n_original_scale, self.save_path)    
 
         return train_loss, valid_loss
 
@@ -542,7 +547,7 @@ class ModelClass():
         return total_preds, total_accuracy, F1, total_pred_per_class, correct_pred_per_class, predictions_for_each_label
 
 
-def plot_training(train_loss: np.ndarray, valid_loss: np.ndarray, best_valid_loss:float, best_valid_loss_epoch_num: int,  save_path: str = None) -> None:
+def plot_training(train_loss: np.ndarray, valid_loss: np.ndarray, best_valid_loss:float, best_valid_loss_epoch_num: int, best_valid_loss_epoch_num_in_m:float,  save_path: str = None) -> None:
     """
     Plot the training and validation loss over epochs.
 
@@ -576,6 +581,7 @@ def plot_training(train_loss: np.ndarray, valid_loss: np.ndarray, best_valid_los
 
     with open(os.path.join(save_path, "best_valid_loss.txt"), "w") as file:
         file.write(f"best validation loss: {best_valid_loss}" "\n")
+        file.write(f"best validation epoch num (in m): {best_valid_loss_epoch_num_in_m}" "\n")
         file.write(f"best validation epoch num: {best_valid_loss_epoch_num}" "\n")
         
 
