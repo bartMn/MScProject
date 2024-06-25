@@ -50,8 +50,8 @@ SAVE_SENSORS = True
 FRAMES_MAX = 210
 SIM_FRAMSE_TOSTART_RECORDING = 8
 SAMPLING_FREQ = 1
-CAM_SENSOR_WIDTH = int(1920/3)
-CAM_SENSOR_HEIGHT = int(1080/3)
+CAM_SENSOR_WIDTH = int(1920/4)
+CAM_SENSOR_HEIGHT = int(1080/4)
 GATHERED_DATA_ROOT = "/home/bart/project/IsaacGym_Preview_4_Package/isaacgym/IsaacGymEnvs-main/isaacgymenvs/recorded_data"
 
 
