@@ -566,7 +566,7 @@ def plot_training(train_loss: np.ndarray, valid_loss: np.ndarray, best_valid_los
     # Add labels and a title
     plt.xlabel('epoch num')
     plt.ylabel('loss')
-    plt.ylim(0, 0.025)
+    plt.ylim(0, 0.1)
     #plt.title('loss over epochs')
 
     # Add a legend
@@ -582,7 +582,7 @@ def plot_training(train_loss: np.ndarray, valid_loss: np.ndarray, best_valid_los
 
     with open(os.path.join(save_path, "best_valid_loss.txt"), "w") as file:
         file.write(f"best validation loss: {best_valid_loss}" "\n")
-        file.write(f"best validation epoch num (in m): {best_valid_loss_epoch_num_in_m}" "\n")
+        file.write(f"best validation loss: (in m): {best_valid_loss_epoch_num_in_m}" "\n")
         file.write(f"best validation epoch num: {best_valid_loss_epoch_num}" "\n")
         
 
