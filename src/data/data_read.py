@@ -179,7 +179,9 @@ def test_single_samples():
 
     NUM_OF_CAMERAS = 5
     camera_types = ["depth", "rgb", "segmented", "flow"]
-    data_root = "/home/bart/project/IsaacGym_Preview_4_Package/isaacgym/IsaacGymEnvs-main/isaacgymenvs/recorded_data"
+    #data_root = "/home/bart/project/IsaacGym_Preview_4_Package/isaacgym/IsaacGymEnvs-main/isaacgymenvs/recorded_data"
+    data_root = os.path.dirname(os.path.abspath(__file__))
+    data_root = os.path.join(data_root, "..", "..", "isaacgym", "IsaacGymEnvs-main", "isaacgymenvs", "recorded_data")
 
     data_dict_dir = dict()
     data_dict_dir["franka_actions"] = f"{data_root}{os.sep}franka_robot{os.sep}actions"

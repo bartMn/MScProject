@@ -38,9 +38,11 @@ def get_flow_and_save(source, dest, env_num, cam_num):
 
 
 def main():
-    source = "/home/bart/project/IsaacGym_Preview_4_Package/isaacgym/IsaacGymEnvs-main/isaacgymenvs/recorded_data/cameras/rgb"
-    dest = "/home/bart/project/IsaacGym_Preview_4_Package/isaacgym/IsaacGymEnvs-main/isaacgymenvs/recorded_data/cameras/flow"
-
+    data_root = os.path.dirname(os.path.abspath(__file__))
+    data_root = os.path.join(data_root, "..", "..", "isaacgym", "IsaacGymEnvs-main", "isaacgymenvs", "recorded_data")
+    source = os.path.join(data_root, "cameras", "rgb")
+    dest = os.path.join(data_root, "cameras", "flow")
+    
     envs_num = max([int(f.replace("env", "")) for f in os.listdir(source +os.sep+ "cam0")])
     camera_env_combinations = list(product([env_n for env_n in range(envs_num+1)], [cam_n for cam_n in range(5)]))
 
