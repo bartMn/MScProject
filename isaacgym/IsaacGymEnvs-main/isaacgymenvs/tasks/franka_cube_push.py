@@ -672,7 +672,9 @@ class FrankaCubePush(VecTask):
             
             self.gym.set_rigid_body_segmentation_id(env_ptr, self._cubeA_id, 0, 200)
             self.gym.set_rigid_body_segmentation_id(env_ptr, self._cubeB_id, 0, 250)
-            self.boxes_to_track.append([self._cubeA_id, self._cubeB_id])
+            
+            if SAVE_SENSORS:
+                self.boxes_to_track.append([self._cubeA_id, self._cubeB_id])
 
             # Set colors
             self.gym.set_rigid_body_color(env_ptr, self._cubeA_id, 0, gymapi.MESH_VISUAL, cubeA_color)
