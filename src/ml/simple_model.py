@@ -19,7 +19,7 @@ module_path = os.path.dirname(os.path.abspath(__file__))
 module_path = os.path.join(module_path, f"..")
 if module_path not in sys.path:
     sys.path.append(module_path)
-from data.data_read import singleSampleDataset, test_single_samples
+from data.data_read import singleSampleDataset, sequentialSampleDataset,  test_single_samples
 torch.backends.cudnn.enabled = False
 
 
@@ -215,6 +215,61 @@ class multimodalMoldel(torch.nn.Module):
         
         return out
 
+
+class sequentialModel(torch.nn.Module):
+    def __init__(self, neueons_in_hidden_layer, dropout, size_of_output, num_of_resnets, linear_inputs_sizes):
+        super(sequentialModel, self).__init__()
+        self.num_of_resnets = num_of_resnets
+        self.linear_inputs_sizes = linear_inputs_sizes
+
+        self.lstm_franka = torch.nn.LSTM(input_size=sum(linear_inputs_sizes), hidden_size=50, batch_first=True)
+        self.lstm_cameras = torch.nn.LSTM(input_size=144 * self.num_of_resnets, hidden_size=128, batch_first=True)
+        
+        
+        self.resnets_list = torch.nn.ModuleList()
+        for _ in range(self.num_of_resnets):
+            #resnet = resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
+            #for param in resnet.parameters():
+            #    param.requires_grad = False
+            #resnet.fc = torch.nn.Identity()
+            resnet = customCNN()
+            self.resnets_list.append(resnet)
+
+        self.fc = customFullyConnectedLayer(size_of_input = 50 + 128, size_of_output = size_of_output)
+
+
+    def forward(self, x):
+        # Pass through the two ResNet18 models
+        
+        batch_size, seq_length, C, H, W = x[0].size()
+        cnn_tensor = torch.zeros(batch_size, seq_length, self.num_of_resnets * 144, device= "cuda")
+        
+        #cnn_features = list()
+        for i in range(self.num_of_resnets):
+            for t in range(seq_length):
+                cnn_tensor[:, t , 144*i : 144* (i+1)] = self.resnets_list[i](x[i][:, t, :, :, :])
+    
+        h0_cam = torch.zeros(1, batch_size, 128).to("cuda")
+        c0_cam = torch.zeros(1, batch_size, 128).to("cuda")
+        cam_lstm_out, (hidden_state, cell_state) = self.lstm_cameras(cnn_tensor, (h0_cam, c0_cam))
+
+        franka_data_tensor = torch.zeros(batch_size, seq_length, sum((self.linear_inputs_sizes)), device= "cuda")
+        offset = 0
+        for i, size in enumerate(self.linear_inputs_sizes):
+            franka_data_tensor[:, :, offset: offset+ size] = (x[i+self.num_of_resnets])
+        
+        h0_franka = torch.zeros(1, batch_size, 50).to("cuda")
+        c0_franka = torch.zeros(1, batch_size, 50).to("cuda")
+        franka_lstm_out, (h_franka, c_franka) = self.lstm_franka(franka_data_tensor, (h0_franka, c0_franka))
+        
+        fused_features = torch.cat((cam_lstm_out[:, -1, :], franka_lstm_out[:, -1, :]), dim=1)
+
+        output = self.fc(fused_features)
+        
+        return output
+        
+
+
     
 class ModelClass():
     """
@@ -228,7 +283,9 @@ class ModelClass():
                  epochs_num:int=20,
                  save_path:str=None,
                  path_to_load_model:str=None,
-                 input_data_keys:str = None) -> None:
+                 input_data_keys:str = None,
+                 sequential_data:bool = False,
+                 sequence_length:int = 2) -> None:
         """
         Initialize the ResNet model for image classification.
 
@@ -243,7 +300,7 @@ class ModelClass():
             save_path (str, optional): The path to save the trained model. Defaults to None.
             path_to_load_model (str, optional): The path to the pre-trained model to load. Defaults to None.
         """
-
+        self.sequential_data = sequential_data
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.save_path = save_path
         if not os.path.exists(self.save_path):
@@ -266,7 +323,7 @@ class ModelClass():
         NUM_OF_CAMERAS = 5
         camera_types = ["depth", "rgb", "segmented", "flow"]
         data_root = os.path.dirname(os.path.abspath(__file__))
-        data_root = os.path.join(data_root, "..", "..", "isaacgym", "IsaacGymEnvs-main", "isaacgymenvs", "recorded_data")
+        data_root = os.path.join(data_root, "..", "..", "..", "recorded_data_isaac_lab")
         
         data_dict_dir = dict()
         data_dict_dir["franka_actions"] = f"{data_root}{os.sep}franka_robot{os.sep}actions"
@@ -300,7 +357,11 @@ class ModelClass():
         
         torch.manual_seed(0) #added maual seed to make sure the random split is the same every time
 
-        full_training_set = singleSampleDataset(data_dict_dir, transform=transform)
+        if self.sequential_data:
+            full_training_set = sequentialSampleDataset(data_dict_dir, transform=transform, sequence_length=sequence_length)
+        else:
+            full_training_set = singleSampleDataset(data_dict_dir, transform=transform)
+            
         self.csv_min_max = full_training_set.csv_min_max.copy()
 
         full_training_set.remove_unused_keys(input_data_keys + ["boxes_pos0"])
@@ -648,4 +709,45 @@ class multiModalClass(ModelClass):
     def get_inputs_and_labels(self, data):
         
         return ([data[data_key].to(self.device) for data_key in self.input_data_keys], data["boxes_pos0"][:,  : self.size_of_output].to(self.device))
+    
+
+
+class sequentialModelClass(ModelClass):
+
+
+    def init_model(self, neueons_in_hidden_layer = 50, dropout = 0.4, learning_rate = 0.1, input_data_keys = None):
+ 
+        self.input_data_keys = input_data_keys
+        self.size_of_output = 3
+
+        num_of_cam_data = 0
+        size_for_non_cam_data = list()
+
+        for i, data in enumerate(self.training_loader):
+            read_data, _= self.get_inputs_and_labels(data)
+            for data_in in read_data:
+                
+                if len(data_in.shape) > 3:
+                   num_of_cam_data  += 1 
+                else:
+                    size_for_non_cam_data.append(data_in.shape[2])
+            break
+
+
+        self.model = sequentialModel(neueons_in_hidden_layer = neueons_in_hidden_layer,
+                                      dropout = dropout,
+                                      size_of_output = 3,
+                                      num_of_resnets= num_of_cam_data,
+                                      linear_inputs_sizes = size_for_non_cam_data
+                                      )
+
+        self.optimizer = Adam(filter(lambda p: p.requires_grad, self.model.parameters()), lr = learning_rate)
+        self.loss_fn = torch.nn.MSELoss()
+        self.model.to(self.device)
+
+
+    def get_inputs_and_labels(self, data):
+        #print(f"data[boxes_pos0].shape = {data['boxes_pos0'].shape}")
+        #print(f"data[boxes_pos0][:, -1 , : self.size_of_output].shape = {data['boxes_pos0'][:, -1 , : self.size_of_output].shape}")
+        return ([data[data_key].to(self.device) for data_key in self.input_data_keys], data["boxes_pos0"][:, : self.size_of_output].to(self.device))
     
