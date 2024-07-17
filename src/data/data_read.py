@@ -135,6 +135,15 @@ class sequentialSampleDataset(Dataset):
             end_idx = len(self.data["cam0_rgb"]) - 1
             self.env_boundaries.append((start_idx, end_idx))
 
+        
+        self.csv_min_max = {}
+        for key, data in self.data.items():
+            if "cam" in key:
+                continue
+            data = np.array(data)
+            self.csv_min_max[key] = (data.min(axis=0), data.max(axis=0))
+
+
 
 
     def __len__(self):
@@ -171,8 +180,22 @@ class sequentialSampleDataset(Dataset):
                     rows.append(row)
                 mulitisensory_sample[dict_key] = torch.tensor(rows, dtype=torch.float)
         
+
+        mulitisensory_sample["boxes_pos0"] = mulitisensory_sample["boxes_pos0"][-1]
+
         return mulitisensory_sample
 
+
+    def remove_unused_keys(self, used_keys):
+
+        all_keys = list()
+        for key in self.data:
+            all_keys.append(key)
+        for key in all_keys:
+            if key not in used_keys:
+                self.data.pop(key)
+        
+        self.key_to_check_len = used_keys[0]
 
 
 def test_single_samples():
