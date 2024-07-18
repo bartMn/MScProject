@@ -1,12 +1,9 @@
 import torch
 from torch.optim import SGD, Adam, Adagrad, RMSprop, Adadelta, AdamW, SparseAdam, Adamax, LBFGS
 from torch.utils.data import DataLoader, random_split, Subset, SubsetRandomSampler
-from torchvision.models import resnet18, ResNet18_Weights
 import torchvision.transforms as transforms
 import numpy as np
-import pandas as pd
 import matplotlib.pyplot as plt
-import seaborn as sns
 from tqdm import tqdm
 from sklearn.metrics import f1_score
 from typing import Tuple, List, Dict
@@ -16,258 +13,15 @@ import os
 import sys
 #module_path = os.path.abspath(os.path.join("../data"))
 module_path = os.path.dirname(os.path.abspath(__file__))
+
 module_path = os.path.join(module_path, f"..")
 if module_path not in sys.path:
     sys.path.append(module_path)
 from data.data_read import singleSampleDataset, sequentialSampleDataset,  test_single_samples
+from ml.models import *
+
 torch.backends.cudnn.enabled = False
 
-
-class customFullyConnectedLayer(torch.nn.Module):
-    """
-    This class is used to create a fully conected
-    suited for the problem of classifiation a ball into one of 15 classes 
-    """
-    
-    def __init__(self, neueons_in_hidden_layer: int = 50, dropout:float = 0.4, size_of_input = 512, size_of_output = 1):
-        """
-        Initializes the fully connected layer.
-
-        Args:
-            neurons_in_hidden_layer (int, optional): The number of neurons in the hidden layer. Defaults to 50.
-            dropout (float, optional): The dropout rate for regularization in the hidden layer. Defaults to 0.4.
-        """
-        
-        super(customFullyConnectedLayer, self).__init__()
-        
-        neurons_in = size_of_input #number of outpus from the resnet18 to the fully connected layer
-        neurons_out = size_of_output #number of image classes
-        
-        self.lin1 = torch.nn.Linear(neurons_in, 512)
-        self.relu = torch.nn.ReLU()
-        self.dropout1 = torch.nn.Dropout(p=dropout)
-        self.lin2 = torch.nn.Linear(512, 128)
-        self.relu = torch.nn.ReLU()
-        self.dropout2 = torch.nn.Dropout(p=dropout)
-        self.lin_out = torch.nn.Linear(128, neurons_out)
-        #self.softmax_out = torch.nn.Softmax(dim=1)
-        
-    def forward(self, x):
-        """
-        Defines the forward pass of the fully connected layer.
-
-        Args:
-            x (torch.Tensor): The input tensor.
-
-        Returns:
-            torch.Tensor: The output tensor after passing through the fully connected layer.
-        """
-        
-        x = self.lin1(x)
-        x = self.relu(x)
-        x = self.dropout1(x)
-        x = self.lin2(x)
-        x = self.relu(x)
-        x = self.dropout2(x)
-        x = self.lin_out(x)
-        #x = self.softmax_out(x)
-        
-        return x
-    
-
-class customCNN(torch.nn.Module):
-    """
-    This class is used to create a fully conected
-    suited for the problem of classifiation a ball into one of 15 classes 
-    """
-    
-    def __init__(self):
-        """
-        Initializes the fully connected layer.
-
-        Args:
-            neurons_in_hidden_layer (int, optional): The number of neurons in the hidden layer. Defaults to 50.
-            dropout (float, optional): The dropout rate for regularization in the hidden layer. Defaults to 0.4.
-        """
-        
-        super(customCNN, self).__init__()
-        
-        # initialize first set of CONV => RELU => POOL layers
-        self.conv1 = torch.nn.Conv2d(in_channels=3, out_channels=16, kernel_size=(5, 5))
-        self.relu1 = torch.nn.ReLU()
-        self.maxpool1 = torch.nn.MaxPool2d(kernel_size=(2, 2), stride=(2, 2))
-        # initialize second set of CONV => RELU => POOL layers
-        self.conv2 = torch.nn.Conv2d(in_channels=16, out_channels=32, kernel_size=(5, 5))
-        self.relu2 = torch.nn.ReLU()
-        self.maxpool2 = torch.nn.MaxPool2d(kernel_size=(2, 2), stride=(2, 2))
-
-        self.conv3 = torch.nn.Conv2d(in_channels=32, out_channels=32, kernel_size=(5, 5))
-        self.relu3 = torch.nn.ReLU()
-        self.maxpool3 = torch.nn.MaxPool2d(kernel_size=(2, 2), stride=(2, 2))
-
-        self.conv4 = torch.nn.Conv2d(in_channels=32, out_channels=16, kernel_size=(5, 5))
-        self.relu4 = torch.nn.ReLU()
-        self.maxpool4 = torch.nn.MaxPool2d(kernel_size=(2, 2), stride=(2, 2))
-
-        self.conv5 = torch.nn.Conv2d(in_channels=16, out_channels=16, kernel_size=(5, 5))
-        self.relu5 = torch.nn.ReLU()
-        self.maxpool5 = torch.nn.MaxPool2d(kernel_size=(2, 2), stride=(2, 2))
-
-        
-    def forward(self, x):
-        
-        #x = torch.flatten(x, 1)
-        #print(f"combined.shape = {x.shape}")
-        #exit()
-        x = self.conv1(x)
-        x = self.relu1(x)
-        x = self.maxpool1(x)
-
-        x = self.conv2(x)
-        x = self.relu2(x)
-        x = self.maxpool2(x)
-        
-        x = self.conv3(x)
-        x = self.relu3(x)
-        x = self.maxpool3(x)
-        
-        x = self.conv4(x)
-        x = self.relu4(x)
-        x = self.maxpool4(x)
-        
-        x = self.conv5(x)
-        x = self.relu5(x)
-        x = self.maxpool5(x)
-        
-
-        x = torch.flatten(x, 1)
-        #print(f"combined.shape = {x.shape}")
-        #exit()
-        return x
-    
-
-
-class CombinedResNet18(torch.nn.Module):
-    def __init__(self, neueons_in_hidden_layer, dropout, size_of_input, size_of_output, num_of_resnets = 2):
-        super(CombinedResNet18, self).__init__()
-        
-        self.num_of_resnets = num_of_resnets
-        self.resnets_list = torch.nn.ModuleList()
-        for _ in range(num_of_resnets):
-            resnet = resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
-            for param in resnet.parameters():
-                param.requires_grad = False
-            resnet.fc = torch.nn.Identity()
-            self.resnets_list.append(resnet)
-        
-        
-        # Define a new fully connected layer
-        self.fc = customFullyConnectedLayer(size_of_input = 512 * num_of_resnets, size_of_output = 3)  # Adjust the output size as needed
-        
-
-
-    def forward(self, x):
-        # Pass through the two ResNet18 models
-        out_combined = [self.resnets_list[i](x[i]) for i in range(self.num_of_resnets)]
-
-        # Concatenate the outputs
-        combined = torch.cat(out_combined, dim=1)
-        
-        # Pass through the fully connected layer
-        out = self.fc(combined)
-        
-        return out
-    
-
-class multimodalMoldel(torch.nn.Module):
-    def __init__(self, neueons_in_hidden_layer, dropout, size_of_output, num_of_resnets, linear_inputs_sizes):
-        super(multimodalMoldel, self).__init__()
-        
-        self.num_of_resnets = num_of_resnets
-        self.linear_inputs_sizes = linear_inputs_sizes
-        
-        self.resnets_list = torch.nn.ModuleList()
-        for _ in range(self.num_of_resnets):
-            #resnet = resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
-            #for param in resnet.parameters():
-            #    param.requires_grad = False
-            #resnet.fc = torch.nn.Identity()
-            resnet = customCNN()
-            self.resnets_list.append(resnet)
-        
-        
-        # Define a new fully connected layer
-        self.fc = customFullyConnectedLayer(size_of_input = 144 * self.num_of_resnets + sum(linear_inputs_sizes), size_of_output = size_of_output)
-        
-
-    def forward(self, x):
-        # Pass through the two ResNet18 models
-        out_combined = list()
-        out_combined = [self.resnets_list[i](x[i]) for i in range(self.num_of_resnets)]
-        
-        for i in range(len(self.linear_inputs_sizes)):
-            out_combined.append(x[i+self.num_of_resnets])
-
-        # Concatenate the outputs
-        combined = torch.cat(out_combined, dim=1)
-        # Pass through the fully connected layer
-        out = self.fc(combined)
-        
-        return out
-
-
-class sequentialModel(torch.nn.Module):
-    def __init__(self, neueons_in_hidden_layer, dropout, size_of_output, num_of_resnets, linear_inputs_sizes):
-        super(sequentialModel, self).__init__()
-        self.num_of_resnets = num_of_resnets
-        self.linear_inputs_sizes = linear_inputs_sizes
-
-        self.lstm_franka = torch.nn.LSTM(input_size=sum(linear_inputs_sizes), hidden_size=50, batch_first=True)
-        self.lstm_cameras = torch.nn.LSTM(input_size=144 * self.num_of_resnets, hidden_size=128, batch_first=True)
-        
-        
-        self.resnets_list = torch.nn.ModuleList()
-        for _ in range(self.num_of_resnets):
-            #resnet = resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
-            #for param in resnet.parameters():
-            #    param.requires_grad = False
-            #resnet.fc = torch.nn.Identity()
-            resnet = customCNN()
-            self.resnets_list.append(resnet)
-
-        self.fc = customFullyConnectedLayer(size_of_input = 50 + 128, size_of_output = size_of_output)
-
-
-    def forward(self, x):
-        # Pass through the two ResNet18 models
-        
-        batch_size, seq_length, C, H, W = x[0].size()
-        cnn_tensor = torch.zeros(batch_size, seq_length, self.num_of_resnets * 144, device= "cuda")
-        
-        #cnn_features = list()
-        for i in range(self.num_of_resnets):
-            for t in range(seq_length):
-                cnn_tensor[:, t , 144*i : 144* (i+1)] = self.resnets_list[i](x[i][:, t, :, :, :])
-    
-        h0_cam = torch.zeros(1, batch_size, 128).to("cuda")
-        c0_cam = torch.zeros(1, batch_size, 128).to("cuda")
-        cam_lstm_out, (hidden_state, cell_state) = self.lstm_cameras(cnn_tensor, (h0_cam, c0_cam))
-
-        franka_data_tensor = torch.zeros(batch_size, seq_length, sum((self.linear_inputs_sizes)), device= "cuda")
-        offset = 0
-        for i, size in enumerate(self.linear_inputs_sizes):
-            franka_data_tensor[:, :, offset: offset+ size] = (x[i+self.num_of_resnets])
-        
-        h0_franka = torch.zeros(1, batch_size, 50).to("cuda")
-        c0_franka = torch.zeros(1, batch_size, 50).to("cuda")
-        franka_lstm_out, (h_franka, c_franka) = self.lstm_franka(franka_data_tensor, (h0_franka, c0_franka))
-        
-        fused_features = torch.cat((cam_lstm_out[:, -1, :], franka_lstm_out[:, -1, :]), dim=1)
-
-        output = self.fc(fused_features)
-        
-        return output
-        
 
 
     
@@ -284,8 +38,10 @@ class ModelClass():
                  save_path:str=None,
                  path_to_load_model:str=None,
                  input_data_keys:str = None,
+                 output_data_key:str = None,
                  sequential_data:bool = False,
-                 sequence_length:int = 2) -> None:
+                 sequence_length:int = 2,
+                 **kwargs) -> None:
         """
         Initialize the ResNet model for image classification.
 
@@ -300,6 +56,9 @@ class ModelClass():
             save_path (str, optional): The path to save the trained model. Defaults to None.
             path_to_load_model (str, optional): The path to the pre-trained model to load. Defaults to None.
         """
+        self.kwargs = kwargs
+        self.output_data_key = output_data_key if output_data_key else "boxes_pos0"
+
         self.sequential_data = sequential_data
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.save_path = save_path
@@ -364,7 +123,7 @@ class ModelClass():
             
         self.csv_min_max = full_training_set.csv_min_max.copy()
 
-        full_training_set.remove_unused_keys(input_data_keys + ["boxes_pos0"])
+        full_training_set.remove_unused_keys(input_data_keys + [self.output_data_key])
         train_size = int(train_val_split * len(full_training_set))
         val_size = len(full_training_set) - train_size
         training_set, validation_set = random_split(full_training_set, [train_size, val_size])
@@ -397,7 +156,7 @@ class ModelClass():
 
     def get_inputs_and_labels(self, data):
         
-        return data["cam0_rgb"].to(self.device), data["boxes_pos0"][:,  : self.size_of_output].to(self.device)
+        return data["cam0_rgb"].to(self.device), data[self.output_data_key][:,  : self.size_of_output].to(self.device)
 
 
     def train_epoch(self, epoch_index: int) -> float:
@@ -490,7 +249,7 @@ class ModelClass():
                     vloss = self.loss_fn(voutputs, vlabels)
                     epoch_vloss += vloss
 
-                    vloss_in_original_scale = self.loss_fn(self.denormalize(voutputs, "boxes_pos0"), self.denormalize(vlabels, "boxes_pos0"))
+                    vloss_in_original_scale = self.loss_fn(self.denormalize(voutputs, self.output_data_key), self.denormalize(vlabels, self.output_data_key))
                     epoch_vloss_in_original_scale += vloss_in_original_scale
 
             avg_vloss = epoch_vloss / (i + 1)
@@ -668,7 +427,7 @@ class twoCamsModelClass(ModelClass):
 
     def get_inputs_and_labels(self, data):
         
-        return ((data["cam0_rgb"].to(self.device), data["cam1_rgb"].to(self.device)), data["boxes_pos0"][:,  : self.size_of_output].to(self.device))
+        return ((data["cam0_rgb"].to(self.device), data["cam1_rgb"].to(self.device)), data[self.output_data_key][:,  : self.size_of_output].to(self.device))
     
 
 
@@ -693,12 +452,20 @@ class multiModalClass(ModelClass):
                     size_for_non_cam_data.append(data_in.shape[1])
             break
 
+        
+        if 'useResnet' not in self.kwargs:
+            self.kwargs['useResnet'] = False
+        if 'usePretrainedResnet' not in self.kwargs:
+            self.kwargs['usePretrainedResnet'] = True
+    
 
         self.model = multimodalMoldel(neueons_in_hidden_layer = neueons_in_hidden_layer,
                                       dropout = dropout,
                                       size_of_output = 3,
                                       num_of_resnets= num_of_cam_data,
-                                      linear_inputs_sizes = size_for_non_cam_data
+                                      linear_inputs_sizes = size_for_non_cam_data,
+                                      useResnet = self.kwargs['useResnet'],
+                                      usePretrainedResnet = self.kwargs['usePretrainedResnet']
                                       )
 
         self.optimizer = Adam(filter(lambda p: p.requires_grad, self.model.parameters()), lr = learning_rate)
@@ -708,7 +475,7 @@ class multiModalClass(ModelClass):
 
     def get_inputs_and_labels(self, data):
         
-        return ([data[data_key].to(self.device) for data_key in self.input_data_keys], data["boxes_pos0"][:,  : self.size_of_output].to(self.device))
+        return ([data[data_key].to(self.device) for data_key in self.input_data_keys], data[self.output_data_key][:,  : self.size_of_output].to(self.device))
     
 
 
@@ -733,12 +500,22 @@ class sequentialModelClass(ModelClass):
                     size_for_non_cam_data.append(data_in.shape[2])
             break
 
+        
+        if 'useResnet' not in self.kwargs:
+            self.kwargs['useResnet'] = False
+        if 'usePretrainedResnet' not in self.kwargs:
+            self.kwargs['usePretrainedResnet'] = True
+    
+
 
         self.model = sequentialModel(neueons_in_hidden_layer = neueons_in_hidden_layer,
                                       dropout = dropout,
                                       size_of_output = 3,
                                       num_of_resnets= num_of_cam_data,
-                                      linear_inputs_sizes = size_for_non_cam_data
+                                      linear_inputs_sizes = size_for_non_cam_data,
+                                      device= self.device,
+                                      useResnet = self.kwargs['useResnet'],
+                                      usePretrainedResnet = self.kwargs['usePretrainedResnet']
                                       )
 
         self.optimizer = Adam(filter(lambda p: p.requires_grad, self.model.parameters()), lr = learning_rate)
@@ -749,5 +526,5 @@ class sequentialModelClass(ModelClass):
     def get_inputs_and_labels(self, data):
         #print(f"data[boxes_pos0].shape = {data['boxes_pos0'].shape}")
         #print(f"data[boxes_pos0][:, -1 , : self.size_of_output].shape = {data['boxes_pos0'][:, -1 , : self.size_of_output].shape}")
-        return ([data[data_key].to(self.device) for data_key in self.input_data_keys], data["boxes_pos0"][:, : self.size_of_output].to(self.device))
+        return ([data[data_key].to(self.device) for data_key in self.input_data_keys], data[self.output_data_key][:, : self.size_of_output].to(self.device))
     
