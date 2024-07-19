@@ -247,8 +247,13 @@ class sequentialModel(torch.nn.Module):
             
             self.resnets_list.append(resnet)
 
-        self.fc = customFullyConnectedLayer(size_of_input = self.lstm_franka_hidden_size + self.lstm_camera_hidden_size, size_of_output = size_of_output)
-
+        
+        # Define a new fully connected layer
+        if kwargs["generateImage"]:
+            self.fc = CNNToImage(size_of_input = self.lstm_franka_hidden_size + self.lstm_camera_hidden_size, do_segmentation= kwargs["do_segmentation"])
+        else:
+            self.fc = customFullyConnectedLayer(size_of_input = self.lstm_franka_hidden_size + self.lstm_camera_hidden_size, size_of_output = size_of_output)
+        
 
     def forward(self, x):
         # Pass through the two ResNet18 models
