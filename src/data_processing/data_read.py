@@ -114,8 +114,9 @@ class singleSampleDataset(Dataset):
 
   
 class sequentialSampleDataset(Dataset):
-    def __init__(self, data_dict_dir, transform=None, sequence_length=3, output_data_key = "boxes_pos0"):
+    def __init__(self, data_dict_dir, transform=None, transform_output_imgs = None, sequence_length=3, output_data_key = "boxes_pos0"):
         self.transform = transform
+        self.transform_output_imgs = transform_output_imgs
         self.output_data_key = output_data_key
         self.sequence_length = sequence_length
         self.env_boundaries = list()
@@ -181,7 +182,16 @@ class sequentialSampleDataset(Dataset):
                 images = []
                 for i in range(self.sequence_length):
                     img = Image.open(self.data[dict_key][idx + i]).convert('RGB')
-                    if self.transform:
+
+                    if self.output_data_key == dict_key:
+                        if "seg" in dict_key:
+                            img = rgb_to_class_index(img)
+                            img = class_index_to_one_hot(img)
+                       
+                        if self.transform_output_imgs:
+                            img = self.transform_output_imgs(img)
+                   
+                    elif self.transform:
                         img = self.transform(img)
                     images.append(img)
                 mulitisensory_sample[dict_key] = torch.stack(images)
