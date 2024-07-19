@@ -1,5 +1,6 @@
 import torch
 from torchvision.models import resnet18, ResNet18_Weights
+import torch.nn.functional as F
 
 
 class customFullyConnectedLayer(torch.nn.Module):
@@ -186,7 +187,10 @@ class multimodalMoldel(torch.nn.Module):
         
         
         # Define a new fully connected layer
-        self.fc = customFullyConnectedLayer(size_of_input = self.cnn_encoding_size * self.num_of_resnets + sum(linear_inputs_sizes), size_of_output = size_of_output)
+        if kwargs["generateImage"]:
+            self.fc = CNNToImage(size_of_input = self.cnn_encoding_size * self.num_of_resnets + sum(linear_inputs_sizes), do_segmentation= kwargs["do_segmentation"])
+        else:
+            self.fc = customFullyConnectedLayer(size_of_input = self.cnn_encoding_size * self.num_of_resnets + sum(linear_inputs_sizes), size_of_output = size_of_output)
         
 
     def forward(self, x):
@@ -276,3 +280,73 @@ class sequentialModel(torch.nn.Module):
         
         return output
         
+
+
+
+
+class CNNToImage(torch.nn.Module):
+    def __init__(self, size_of_input, do_segmentation):
+        super(CNNToImage, self).__init__()
+
+
+        if do_segmentation:
+            self.output_channels = 5
+            align_corners_mode = None
+            upscaling_mode = 'nearest'
+        else:
+            self.output_channels = 3
+            upscaling_mode = 'bilinear' 
+            align_corners_mode = True
+
+        input_vector_size = size_of_input
+        self.mapped_image_channels = 1
+        self.mapped_image_height = 32
+        self.mapped_image_width = 32
+
+        self.lin_decoder = torch.nn.Linear(input_vector_size, self.mapped_image_channels * self.mapped_image_height * self.mapped_image_width)
+        # Define your CNN layers (convolutions, pooling, etc.)
+        self.upconv1 = torch.nn.ConvTranspose2d(self.mapped_image_channels, 16, kernel_size=3, stride=2, padding=1)
+        self.upconv2 = torch.nn.ConvTranspose2d(16, self.output_channels, kernel_size=3, stride=2, padding=1)
+        self.upconv3 = torch.nn.ConvTranspose2d(32, 64, kernel_size=3, stride=2, padding=1)
+        #self.pool = torch.nn.MaxPool2d(kernel_size=2, stride=2, padding=0)
+        
+        # Instead of a fully connected layer, we'll have a final Conv2d layer that outputs an RGB image
+          # RGB image has 3 channels
+        self.do_segmentation = do_segmentation
+
+
+        self.final_upconv = torch.nn.ConvTranspose2d(64, self.output_channels, kernel_size=3, stride=2, padding=1)
+
+        self.softmax = torch.nn.Softmax(dim=1)
+        
+        # Optionally, to ensure the output size matches the desired image size
+        self.upsample = torch.nn.Upsample(size=(224, 224), mode= upscaling_mode, align_corners=align_corners_mode)
+
+    def forward(self, x):
+
+        x = self.lin_decoder(x)
+        x = x.view(-1, self.mapped_image_channels, self.mapped_image_height, self.mapped_image_width)
+        
+        x = self.upconv1(x)
+        x = torch.relu(x)
+        x = self.upconv2(x)
+        #x = torch.relu(x)
+        #x = self.upconv3(x)
+        #x = torch.relu(x)
+        #x = self.final_upconv(x)
+
+        # Produce an RGB image with final convolution
+        if self.do_segmentation:
+            x = self.softmax(x)
+        else:
+            x = torch.relu(x)
+            #x = 255* torch.sigmoid(self.final_upconv(x))
+        #x *= 255
+
+        #try:
+        #    ha = g
+        #except:
+        #    print(torch.sum(x[0, :, 0, 0]))
+        x = self.upsample(x)
+
+        return x
