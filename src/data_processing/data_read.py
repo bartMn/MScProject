@@ -13,9 +13,11 @@ def natural_sort_key(s):
 
 
 class singleSampleDataset(Dataset):
-    def __init__(self, data_dict_dir, transform=None):
+    def __init__(self, data_dict_dir, transform=None, transform_output_imgs = None, output_data_key= ""):
 
         self.transform = transform
+        self.transform_output_imgs= transform_output_imgs
+        self.output_data_key = output_data_key
     
         # Collect all env directories
         self.env_dirs = sorted(os.listdir(data_dict_dir["cam0_rgb"]))
@@ -62,13 +64,22 @@ class singleSampleDataset(Dataset):
         mulitisensory_sample = dict()
         epsilon=1e-8
         for dict_key in self.data:
-                
+            
             if "cam" in dict_key:
                 # Read images
                 mulitisensory_sample[dict_key] = Image.open(self.data[dict_key][idx]).convert('RGB')
                 #sensor2_image = Image.open(self.data["cam1_rgb"][idx]).convert('RGB')
 
-                if self.transform:
+                if self.output_data_key == dict_key:
+                    if "seg" in dict_key:
+                        mulitisensory_sample[dict_key]= rgb_to_class_index(mulitisensory_sample[dict_key])
+                        mulitisensory_sample[dict_key] = class_index_to_one_hot(mulitisensory_sample[dict_key])
+                       
+                    if self.transform_output_imgs:
+                        mulitisensory_sample[dict_key] = self.transform_output_imgs(mulitisensory_sample[dict_key])
+                   
+
+                elif self.transform:
                     mulitisensory_sample[dict_key] = self.transform(mulitisensory_sample[dict_key])
                     #sensor2_image = self.transform(sensor2_image)
 
@@ -103,8 +114,9 @@ class singleSampleDataset(Dataset):
 
   
 class sequentialSampleDataset(Dataset):
-    def __init__(self, data_dict_dir, transform=None, sequence_length=3):
+    def __init__(self, data_dict_dir, transform=None, sequence_length=3, output_data_key = "boxes_pos0"):
         self.transform = transform
+        self.output_data_key = output_data_key
         self.sequence_length = sequence_length
         self.env_boundaries = list()
         # Collect all env directories
@@ -181,7 +193,7 @@ class sequentialSampleDataset(Dataset):
                 mulitisensory_sample[dict_key] = torch.tensor(rows, dtype=torch.float)
         
 
-        mulitisensory_sample["boxes_pos0"] = mulitisensory_sample["boxes_pos0"][-1]
+        mulitisensory_sample[self.output_data_key] = mulitisensory_sample[self.output_data_key][-1]
 
         return mulitisensory_sample
 
@@ -318,6 +330,39 @@ def test_sequential_samples():
         print("EXITING...")
         exit(0)
 
+
+def rgb_to_class_index(rgb_image):
+
+    colors = [(0, 0, 0),  # Background
+              (25, 255, 255),  # Class 1
+              (140, 25, 140),  # Class 2
+              (140, 255, 25),  # Class 3
+              (255, 25, 25)
+            ]
+    color_map = {tuple(color): idx for idx, color in enumerate(colors)}
+ 
+    rgb_image = np.array(rgb_image)
+    #print(f"rgb_image = {rgb_image}")
+    height, width, _ = rgb_image.shape
+    class_index_image = np.zeros((height, width), dtype=np.int64)
+    
+    for color, class_index in color_map.items():
+        mask = np.all(rgb_image == color, axis=-1)
+        class_index_image[mask] = class_index
+    
+    return class_index_image
+
+
+def class_index_to_one_hot(class_index_image):
+    num_classes = 5
+    
+    height, width = class_index_image.shape
+    one_hot = np.zeros((num_classes, height, width), dtype=np.float32)
+    
+    for c in range(num_classes):
+        one_hot[c, :, :] = (class_index_image == c)
+    
+    return torch.tensor(one_hot)
 
 if __name__ == "__main__":
     #test_single_samples()
