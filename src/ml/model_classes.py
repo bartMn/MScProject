@@ -58,6 +58,10 @@ class ModelClass():
         """
         self.kwargs = kwargs
         self.output_data_key = output_data_key if output_data_key else "boxes_pos0"
+        if "seg" in self.output_data_key:
+            self.size_of_output = 5
+        else:
+            self.size_of_output= 3
 
         self.sequential_data = sequential_data
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -112,14 +116,28 @@ class ModelClass():
                                                         std=[0.229, 0.224, 0.225]
                                                         )
                                     ])
-
+        
+        if "seg" in self.output_data_key:
+            transform_output_imgs = transforms.Compose([
+                                        transforms.Resize(256),         # Resize the image to 256x256 pixels
+                                        transforms.CenterCrop(224),     # Crop the center to 224x224 pixels
+                                        #transforms.ToTensor()           # Convert the image to a PyTorch tensor
+                                        ])
+        elif "cam" in self.output_data_key:
+            transform_output_imgs = transforms.Compose([
+                                    transforms.Resize(256),         # Resize the image to 256x256 pixels
+                                    transforms.CenterCrop(224),     # Crop the center to 224x224 pixels
+                                    transforms.ToTensor()           # Convert the image to a PyTorch tensor
+                                    ])
+        else:
+            transform_output_imgs = None
         
         torch.manual_seed(0) #added maual seed to make sure the random split is the same every time
 
         if self.sequential_data:
-            full_training_set = sequentialSampleDataset(data_dict_dir, transform=transform, sequence_length=sequence_length)
+            full_training_set = sequentialSampleDataset(data_dict_dir, transform=transform, sequence_length=sequence_length, transform_output_imgs = transform_output_imgs, output_data_key = self.output_data_key)
         else:
-            full_training_set = singleSampleDataset(data_dict_dir, transform=transform)
+            full_training_set = singleSampleDataset(data_dict_dir, transform=transform, transform_output_imgs = transform_output_imgs, output_data_key =output_data_key)
             
         self.csv_min_max = full_training_set.csv_min_max.copy()
 
@@ -136,7 +154,7 @@ class ModelClass():
     def init_model(self, neueons_in_hidden_layer = 50, dropout = 0.4, learning_rate = 0.1):
         
         self.model = resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
-        self.size_of_output = 3
+        #self.size_of_output = 3
         self.model.fc = customFullyConnectedLayer(neueons_in_hidden_layer = neueons_in_hidden_layer, dropout= dropout, size_of_output= self.size_of_output)
 
         custom_fc_params = list(self.model.fc.parameters()) 
@@ -183,6 +201,8 @@ class ModelClass():
             # Make predictions for this batch
             outputs = self.model(inputs)
             # Compute the loss and its gradients
+            #print(f"outputs.shape = {outputs.shape}")
+            #print(f"labels.shape = {labels.shape}")
             loss = self.loss_fn(outputs, labels)
             loss.backward()
             # Adjust learning weights
@@ -249,7 +269,10 @@ class ModelClass():
                     vloss = self.loss_fn(voutputs, vlabels)
                     epoch_vloss += vloss
 
-                    vloss_in_original_scale = self.loss_fn(self.denormalize(voutputs, self.output_data_key), self.denormalize(vlabels, self.output_data_key))
+                    if "cam" not in self.output_data_key:
+                        vloss_in_original_scale = self.loss_fn(self.denormalize(voutputs, self.output_data_key), self.denormalize(vlabels, self.output_data_key))
+                    else:
+                        vloss_in_original_scale = 0
                     epoch_vloss_in_original_scale += vloss_in_original_scale
 
             avg_vloss = epoch_vloss / (i + 1)
@@ -412,7 +435,7 @@ class twoCamsModelClass(ModelClass):
 
     def init_model(self, neueons_in_hidden_layer = 50, dropout = 0.4, learning_rate = 0.1):
  
-        self.size_of_output = 3
+        #self.size_of_output = 3
         num_of_resnets = 2
         self.model = CombinedResNet18(neueons_in_hidden_layer = neueons_in_hidden_layer,
                                       dropout = dropout,
@@ -437,7 +460,7 @@ class multiModalClass(ModelClass):
     def init_model(self, neueons_in_hidden_layer = 50, dropout = 0.4, learning_rate = 0.1, input_data_keys = None):
  
         self.input_data_keys = input_data_keys
-        self.size_of_output = 3
+        #self.size_of_output = 3
 
         num_of_cam_data = 0
         size_for_non_cam_data = list()
@@ -453,11 +476,24 @@ class multiModalClass(ModelClass):
             break
 
         
+        self.loss_fn = torch.nn.MSELoss()
+
         if 'useResnet' not in self.kwargs:
             self.kwargs['useResnet'] = False
         if 'usePretrainedResnet' not in self.kwargs:
             self.kwargs['usePretrainedResnet'] = True
-    
+        if 'cam' in self.output_data_key:
+            self.kwargs['generateImage'] = True
+        else:
+            self.kwargs['generateImage'] = False
+
+        if 'do_segmentation' not in self.kwargs:
+            self.kwargs['do_segmentation'] = False
+            
+        if self.kwargs['do_segmentation']:
+            self.loss_fn = torch.nn.CrossEntropyLoss()
+            #self.loss_fn = torch.nn.MSELoss()
+
 
         self.model = multimodalMoldel(neueons_in_hidden_layer = neueons_in_hidden_layer,
                                       dropout = dropout,
@@ -465,17 +501,24 @@ class multiModalClass(ModelClass):
                                       num_of_resnets= num_of_cam_data,
                                       linear_inputs_sizes = size_for_non_cam_data,
                                       useResnet = self.kwargs['useResnet'],
-                                      usePretrainedResnet = self.kwargs['usePretrainedResnet']
+                                      usePretrainedResnet = self.kwargs['usePretrainedResnet'],
+                                      generateImage = self.kwargs['generateImage'],
+                                      do_segmentation = self.kwargs["do_segmentation"]
                                       )
 
         self.optimizer = Adam(filter(lambda p: p.requires_grad, self.model.parameters()), lr = learning_rate)
-        self.loss_fn = torch.nn.MSELoss()
+        
         self.model.to(self.device)
 
 
     def get_inputs_and_labels(self, data):
-        
-        return ([data[data_key].to(self.device) for data_key in self.input_data_keys], data[self.output_data_key][:,  : self.size_of_output].to(self.device))
+        #print(f"data[self.output_data_key].shape = {data[self.output_data_key].shape}")
+        #print(f"data[self.output_data_key][:,  : self.size_of_output].shape = {data[self.output_data_key][:,  : self.size_of_output].shape}")
+        #exit(0)
+        #print(f"data[self.output_data_key].shape = {data[self.output_data_key].shape}")
+        #print(f"data[self.output_data_key] = {data[self.output_data_key]}")
+        #exit(0)
+        return ([data[data_key].to(self.device) for data_key in self.input_data_keys], data[self.output_data_key][:, : self.size_of_output].to(self.device))
     
 
 
@@ -485,7 +528,7 @@ class sequentialModelClass(ModelClass):
     def init_model(self, neueons_in_hidden_layer = 50, dropout = 0.4, learning_rate = 0.1, input_data_keys = None):
  
         self.input_data_keys = input_data_keys
-        self.size_of_output = 3
+        #self.size_of_output = 3
 
         num_of_cam_data = 0
         size_for_non_cam_data = list()
@@ -501,10 +544,23 @@ class sequentialModelClass(ModelClass):
             break
 
         
+        self.loss_fn = torch.nn.MSELoss()
+
         if 'useResnet' not in self.kwargs:
             self.kwargs['useResnet'] = False
         if 'usePretrainedResnet' not in self.kwargs:
             self.kwargs['usePretrainedResnet'] = True
+        if 'cam' in self.output_data_key:
+            self.kwargs['generateImage'] = True
+        else:
+            self.kwargs['generateImage'] = False
+
+        if 'do_segmentation' not in self.kwargs:
+            self.kwargs['do_segmentation'] = False
+            
+        if self.kwargs['do_segmentation']:
+            self.loss_fn = torch.nn.CrossEntropyLoss()
+            #self.loss_fn = torch.nn.MSELoss(
     
 
 
@@ -515,11 +571,13 @@ class sequentialModelClass(ModelClass):
                                       linear_inputs_sizes = size_for_non_cam_data,
                                       device= self.device,
                                       useResnet = self.kwargs['useResnet'],
-                                      usePretrainedResnet = self.kwargs['usePretrainedResnet']
+                                      usePretrainedResnet = self.kwargs['usePretrainedResnet'],
+                                      generateImage = self.kwargs['generateImage'],
+                                      do_segmentation = self.kwargs["do_segmentation"]
                                       )
 
         self.optimizer = Adam(filter(lambda p: p.requires_grad, self.model.parameters()), lr = learning_rate)
-        self.loss_fn = torch.nn.MSELoss()
+        #
         self.model.to(self.device)
 
 
