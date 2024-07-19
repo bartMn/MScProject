@@ -562,19 +562,34 @@ class sequentialModelClass(ModelClass):
             self.loss_fn = torch.nn.CrossEntropyLoss()
             #self.loss_fn = torch.nn.MSELoss(
     
+        if "fusing_before_RNN" not in self.kwargs:
+            self.kwargs['fusing_before_RNN'] = False
 
 
-        self.model = sequentialModel(neueons_in_hidden_layer = neueons_in_hidden_layer,
-                                      dropout = dropout,
-                                      size_of_output = 3,
-                                      num_of_resnets= num_of_cam_data,
-                                      linear_inputs_sizes = size_for_non_cam_data,
-                                      device= self.device,
-                                      useResnet = self.kwargs['useResnet'],
-                                      usePretrainedResnet = self.kwargs['usePretrainedResnet'],
-                                      generateImage = self.kwargs['generateImage'],
-                                      do_segmentation = self.kwargs["do_segmentation"]
-                                      )
+        if not self.kwargs['fusing_before_RNN']: 
+            self.model = sequentialModel(neueons_in_hidden_layer = neueons_in_hidden_layer,
+                                          dropout = dropout,
+                                          size_of_output = 3,
+                                          num_of_resnets= num_of_cam_data,
+                                          linear_inputs_sizes = size_for_non_cam_data,
+                                          device= self.device,
+                                          useResnet = self.kwargs['useResnet'],
+                                          usePretrainedResnet = self.kwargs['usePretrainedResnet'],
+                                          generateImage = self.kwargs['generateImage'],
+                                          do_segmentation = self.kwargs["do_segmentation"]
+                                          )
+        else:
+            self.model = sequentialModelFusingBeforeRNN(neueons_in_hidden_layer = neueons_in_hidden_layer,
+                                          dropout = dropout,
+                                          size_of_output = 3,
+                                          num_of_resnets= num_of_cam_data,
+                                          linear_inputs_sizes = size_for_non_cam_data,
+                                          device= self.device,
+                                          useResnet = self.kwargs['useResnet'],
+                                          usePretrainedResnet = self.kwargs['usePretrainedResnet'],
+                                          generateImage = self.kwargs['generateImage'],
+                                          do_segmentation = self.kwargs["do_segmentation"]
+                                          )
 
         self.optimizer = Adam(filter(lambda p: p.requires_grad, self.model.parameters()), lr = learning_rate)
         #
