@@ -465,14 +465,24 @@ class multiModalClass(ModelClass):
         num_of_cam_data = 0
         size_for_non_cam_data = list()
 
+        if self.sequential_data:
+            shape_to_check = 3
+            dim_to_take = 2
+            if "fusing_before_RNN" not in self.kwargs:
+                self.kwargs['fusing_before_RNN'] = False
+
+        else:
+            shape_to_check = 2
+            dim_to_take = 1
+
         for i, data in enumerate(self.training_loader):
             read_data, _= self.get_inputs_and_labels(data)
             for data_in in read_data:
                 
-                if len(data_in.shape) > 2:
+                if len(data_in.shape) > shape_to_check:
                    num_of_cam_data  += 1 
                 else:
-                    size_for_non_cam_data.append(data_in.shape[1])
+                    size_for_non_cam_data.append(data_in.shape[dim_to_take])
             break
 
         
@@ -495,16 +505,44 @@ class multiModalClass(ModelClass):
             #self.loss_fn = torch.nn.MSELoss()
 
 
-        self.model = multimodalMoldel(neueons_in_hidden_layer = neueons_in_hidden_layer,
-                                      dropout = dropout,
-                                      size_of_output = 3,
-                                      num_of_resnets= num_of_cam_data,
-                                      linear_inputs_sizes = size_for_non_cam_data,
-                                      useResnet = self.kwargs['useResnet'],
-                                      usePretrainedResnet = self.kwargs['usePretrainedResnet'],
-                                      generateImage = self.kwargs['generateImage'],
-                                      do_segmentation = self.kwargs["do_segmentation"]
-                                      )
+        
+        if self.sequential_data and self.kwargs['fusing_before_RNN']:
+            self.model = sequentialModelFusingBeforeRNN(neueons_in_hidden_layer = neueons_in_hidden_layer,
+                                          dropout = dropout,
+                                          size_of_output = 3,
+                                          num_of_resnets= num_of_cam_data,
+                                          linear_inputs_sizes = size_for_non_cam_data,
+                                          device= self.device,
+                                          useResnet = self.kwargs['useResnet'],
+                                          usePretrainedResnet = self.kwargs['usePretrainedResnet'],
+                                          generateImage = self.kwargs['generateImage'],
+                                          do_segmentation = self.kwargs["do_segmentation"]
+                                          )
+            
+        elif self.sequential_data: 
+            self.model = sequentialModel(neueons_in_hidden_layer = neueons_in_hidden_layer,
+                                          dropout = dropout,
+                                          size_of_output = 3,
+                                          num_of_resnets= num_of_cam_data,
+                                          linear_inputs_sizes = size_for_non_cam_data,
+                                          device= self.device,
+                                          useResnet = self.kwargs['useResnet'],
+                                          usePretrainedResnet = self.kwargs['usePretrainedResnet'],
+                                          generateImage = self.kwargs['generateImage'],
+                                          do_segmentation = self.kwargs["do_segmentation"]
+                                          )
+
+        else:
+            self.model = multimodalMoldel(neueons_in_hidden_layer = neueons_in_hidden_layer,
+                                          dropout = dropout,
+                                          size_of_output = 3,
+                                          num_of_resnets= num_of_cam_data,
+                                          linear_inputs_sizes = size_for_non_cam_data,
+                                          useResnet = self.kwargs['useResnet'],
+                                          usePretrainedResnet = self.kwargs['usePretrainedResnet'],
+                                          generateImage = self.kwargs['generateImage'],
+                                          do_segmentation = self.kwargs["do_segmentation"]
+                                          )
 
         self.optimizer = Adam(filter(lambda p: p.requires_grad, self.model.parameters()), lr = learning_rate)
         
@@ -519,85 +557,3 @@ class multiModalClass(ModelClass):
         #print(f"data[self.output_data_key] = {data[self.output_data_key]}")
         #exit(0)
         return ([data[data_key].to(self.device) for data_key in self.input_data_keys], data[self.output_data_key][:, : self.size_of_output].to(self.device))
-    
-
-
-class sequentialModelClass(ModelClass):
-
-
-    def init_model(self, neueons_in_hidden_layer = 50, dropout = 0.4, learning_rate = 0.1, input_data_keys = None):
- 
-        self.input_data_keys = input_data_keys
-        #self.size_of_output = 3
-
-        num_of_cam_data = 0
-        size_for_non_cam_data = list()
-
-        for i, data in enumerate(self.training_loader):
-            read_data, _= self.get_inputs_and_labels(data)
-            for data_in in read_data:
-                
-                if len(data_in.shape) > 3:
-                   num_of_cam_data  += 1 
-                else:
-                    size_for_non_cam_data.append(data_in.shape[2])
-            break
-
-        
-        self.loss_fn = torch.nn.MSELoss()
-
-        if 'useResnet' not in self.kwargs:
-            self.kwargs['useResnet'] = False
-        if 'usePretrainedResnet' not in self.kwargs:
-            self.kwargs['usePretrainedResnet'] = True
-        if 'cam' in self.output_data_key:
-            self.kwargs['generateImage'] = True
-        else:
-            self.kwargs['generateImage'] = False
-
-        if 'do_segmentation' not in self.kwargs:
-            self.kwargs['do_segmentation'] = False
-            
-        if self.kwargs['do_segmentation']:
-            self.loss_fn = torch.nn.CrossEntropyLoss()
-            #self.loss_fn = torch.nn.MSELoss(
-    
-        if "fusing_before_RNN" not in self.kwargs:
-            self.kwargs['fusing_before_RNN'] = False
-
-
-        if not self.kwargs['fusing_before_RNN']: 
-            self.model = sequentialModel(neueons_in_hidden_layer = neueons_in_hidden_layer,
-                                          dropout = dropout,
-                                          size_of_output = 3,
-                                          num_of_resnets= num_of_cam_data,
-                                          linear_inputs_sizes = size_for_non_cam_data,
-                                          device= self.device,
-                                          useResnet = self.kwargs['useResnet'],
-                                          usePretrainedResnet = self.kwargs['usePretrainedResnet'],
-                                          generateImage = self.kwargs['generateImage'],
-                                          do_segmentation = self.kwargs["do_segmentation"]
-                                          )
-        else:
-            self.model = sequentialModelFusingBeforeRNN(neueons_in_hidden_layer = neueons_in_hidden_layer,
-                                          dropout = dropout,
-                                          size_of_output = 3,
-                                          num_of_resnets= num_of_cam_data,
-                                          linear_inputs_sizes = size_for_non_cam_data,
-                                          device= self.device,
-                                          useResnet = self.kwargs['useResnet'],
-                                          usePretrainedResnet = self.kwargs['usePretrainedResnet'],
-                                          generateImage = self.kwargs['generateImage'],
-                                          do_segmentation = self.kwargs["do_segmentation"]
-                                          )
-
-        self.optimizer = Adam(filter(lambda p: p.requires_grad, self.model.parameters()), lr = learning_rate)
-        #
-        self.model.to(self.device)
-
-
-    def get_inputs_and_labels(self, data):
-        #print(f"data[boxes_pos0].shape = {data['boxes_pos0'].shape}")
-        #print(f"data[boxes_pos0][:, -1 , : self.size_of_output].shape = {data['boxes_pos0'][:, -1 , : self.size_of_output].shape}")
-        return ([data[data_key].to(self.device) for data_key in self.input_data_keys], data[self.output_data_key][:, : self.size_of_output].to(self.device))
-    
