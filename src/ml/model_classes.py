@@ -107,6 +107,11 @@ class ModelClass():
         #    transforms.ToTensor()
         #])
 
+        if 'do_segmentation' in self.kwargs:
+            one_hot_for_segmentation = self.kwargs['do_segmentation']
+        else:
+            one_hot_for_segmentation = False
+
         transform = transforms.Compose([
                                     transforms.Resize(256),         # Resize the image to 256x256 pixels
                                     transforms.CenterCrop(224),     # Crop the center to 224x224 pixels
@@ -117,7 +122,7 @@ class ModelClass():
                                                         )
                                     ])
         
-        if "seg" in self.output_data_key:
+        if one_hot_for_segmentation:
             transform_output_imgs = transforms.Compose([
                                         transforms.Resize(256),         # Resize the image to 256x256 pixels
                                         transforms.CenterCrop(224),     # Crop the center to 224x224 pixels
@@ -134,14 +139,25 @@ class ModelClass():
         
         torch.manual_seed(0) #added maual seed to make sure the random split is the same every time
 
+        used_keys = input_data_keys + [self.output_data_key]
+        
         if self.sequential_data:
-            full_training_set = sequentialSampleDataset(data_dict_dir, transform=transform, sequence_length=sequence_length, transform_output_imgs = transform_output_imgs, output_data_key = self.output_data_key)
+            full_training_set = sequentialSampleDataset(data_dict_dir,
+                                                        transform=transform,
+                                                        sequence_length=sequence_length,
+                                                        transform_output_imgs = transform_output_imgs,
+                                                        output_data_key = self.output_data_key,
+                                                        used_keys = used_keys)
         else:
-            full_training_set = singleSampleDataset(data_dict_dir, transform=transform, transform_output_imgs = transform_output_imgs, output_data_key =output_data_key)
+            full_training_set = singleSampleDataset(data_dict_dir,
+                                                    transform=transform,
+                                                    transform_output_imgs = transform_output_imgs,
+                                                    output_data_key =output_data_key,
+                                                    used_keys = used_keys)
             
         self.csv_min_max = full_training_set.csv_min_max.copy()
 
-        full_training_set.remove_unused_keys(input_data_keys + [self.output_data_key])
+        #full_training_set.remove_unused_keys(input_data_keys + [self.output_data_key])
         train_size = int(train_val_split * len(full_training_set))
         val_size = len(full_training_set) - train_size
         training_set, validation_set = random_split(full_training_set, [train_size, val_size])
