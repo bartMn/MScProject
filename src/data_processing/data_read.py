@@ -13,23 +13,27 @@ def natural_sort_key(s):
 
 
 class singleSampleDataset(Dataset):
-    def __init__(self, data_dict_dir, transform=None, transform_output_imgs = None, output_data_key= ""):
+    def __init__(self, data_dict_dir, transform=None, transform_output_imgs = None, output_data_key= "", used_keys = None, one_hot_for_segmentation= False):
 
         self.transform = transform
         self.transform_output_imgs= transform_output_imgs
         self.output_data_key = output_data_key
     
+        self.one_hot_for_segmentation = one_hot_for_segmentation
+
         # Collect all env directories
         self.env_dirs = sorted(os.listdir(data_dict_dir["cam0_rgb"]))
-        
+        self.used_keys = used_keys
         # Initialize lists to hold image paths and csv data
         self.data = dict()
         self.key_to_check_len = None
         for key in data_dict_dir:
+            if key not in used_keys:
+                    continue
             self.data[key] = []
 
         for env_num in self.env_dirs:
-            for dict_key in data_dict_dir:
+            for dict_key in used_keys:
                 self.key_to_check_len = dict_key
                 if "cam" in dict_key:
                     cam_env_dir = os.path.join(data_dict_dir[dict_key], env_num)
@@ -71,7 +75,7 @@ class singleSampleDataset(Dataset):
                 #sensor2_image = Image.open(self.data["cam1_rgb"][idx]).convert('RGB')
 
                 if self.output_data_key == dict_key:
-                    if "seg" in dict_key:
+                    if "seg" in dict_key and self.one_hot_for_segmentation:
                         mulitisensory_sample[dict_key]= rgb_to_class_index(mulitisensory_sample[dict_key])
                         mulitisensory_sample[dict_key] = class_index_to_one_hot(mulitisensory_sample[dict_key])
                        
@@ -114,25 +118,32 @@ class singleSampleDataset(Dataset):
 
   
 class sequentialSampleDataset(Dataset):
-    def __init__(self, data_dict_dir, transform=None, transform_output_imgs = None, sequence_length=3, output_data_key = "boxes_pos0"):
+    def __init__(self, data_dict_dir, transform=None, transform_output_imgs = None, sequence_length=3, output_data_key = "boxes_pos0", used_keys = None, one_hot_for_segmentation = False):
         self.transform = transform
         self.transform_output_imgs = transform_output_imgs
         self.output_data_key = output_data_key
         self.sequence_length = sequence_length
         self.env_boundaries = list()
+
+        self.output_data_key = output_data_key
+        self.one_hot_for_segmentation = one_hot_for_segmentation
+
+        self.used_keys = used_keys
         # Collect all env directories
         self.env_dirs = sorted(os.listdir(data_dict_dir["cam0_rgb"]))
         
         # Initialize lists to hold image paths and csv data
         self.data = dict()
         for key in data_dict_dir:
+            if key not in used_keys:
+                    continue
             self.data[key] = []
 
         for env_num in self.env_dirs:
 
             start_idx = len(self.data["cam0_rgb"])
-
-            for dict_key in data_dict_dir:
+            for dict_key in used_keys:
+                
                 if "cam" in dict_key:
                     cam_env_dir = os.path.join(data_dict_dir[dict_key], env_num)
                     # Get image files
@@ -184,7 +195,7 @@ class sequentialSampleDataset(Dataset):
                     img = Image.open(self.data[dict_key][idx + i]).convert('RGB')
 
                     if self.output_data_key == dict_key:
-                        if "seg" in dict_key:
+                        if "seg" in dict_key and self.one_hot_for_segmentation:
                             img = rgb_to_class_index(img)
                             img = class_index_to_one_hot(img)
                        
