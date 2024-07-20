@@ -141,7 +141,8 @@ class sequentialSampleDataset(Dataset):
 
         for env_num in self.env_dirs:
 
-            start_idx = len(self.data["cam0_rgb"])
+            start_idx = len(self.data[used_keys[0]])
+            
             for dict_key in used_keys:
                 
                 if "cam" in dict_key:
@@ -156,7 +157,7 @@ class sequentialSampleDataset(Dataset):
                     df = pd.read_csv(csv_env_file, header=None)
                     self.data[dict_key].extend(df.values.tolist())
             
-            end_idx = len(self.data["cam0_rgb"]) - 1
+            end_idx = len(self.data[used_keys[0]]) - 1
             self.env_boundaries.append((start_idx, end_idx))
 
         
