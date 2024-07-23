@@ -39,7 +39,7 @@ def get_flow_and_save(source, dest, env_num, cam_num):
 
 def main():
     data_root = os.path.dirname(os.path.abspath(__file__))
-    data_root = os.path.join(data_root, "..", "..", "isaacgym", "IsaacGymEnvs-main", "isaacgymenvs", "recorded_data")
+    data_root = os.path.join(data_root, "..", "..", "..", "recorded_data_isaac_lab")
     source = os.path.join(data_root, "cameras", "rgb")
     dest = os.path.join(data_root, "cameras", "flow")
     
