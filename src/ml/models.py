@@ -430,6 +430,7 @@ class CNNToImage(torch.nn.Module):
     def forward(self, x):
 
         x = self.lin_decoder(x)
+        x = torch.relu(x)
         x = x.view(-1, self.mapped_image_channels, self.mapped_image_height, self.mapped_image_width)
         x = self.upconv1(x)
         x = torch.relu(x)      
