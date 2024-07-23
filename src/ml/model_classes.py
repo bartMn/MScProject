@@ -147,13 +147,15 @@ class ModelClass():
                                                         sequence_length=sequence_length,
                                                         transform_output_imgs = transform_output_imgs,
                                                         output_data_key = self.output_data_key,
-                                                        used_keys = used_keys)
+                                                        used_keys = used_keys,
+                                                        one_hot_for_segmentation = one_hot_for_segmentation)
         else:
             full_training_set = singleSampleDataset(data_dict_dir,
                                                     transform=transform,
                                                     transform_output_imgs = transform_output_imgs,
                                                     output_data_key =output_data_key,
-                                                    used_keys = used_keys)
+                                                    used_keys = used_keys,
+                                                    one_hot_for_segmentation = one_hot_for_segmentation)
             
         self.csv_min_max = full_training_set.csv_min_max.copy()
 
@@ -210,6 +212,7 @@ class ModelClass():
             # Every data instance is an input + label pair
             inputs, labels = self.get_inputs_and_labels(data)
 
+            #print(f"max = {labels.max()}")
             #inputs = inputs.to(self.device)
             #labels = labels.to(self.device)
             # Zero your gradients for every batch!
