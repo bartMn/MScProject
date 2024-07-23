@@ -395,12 +395,12 @@ class CNNToImage(torch.nn.Module):
 
         if do_segmentation:
             self.output_channels = 5
-            align_corners_mode = None
-            upscaling_mode = 'nearest'
+            self.align_corners_mode = None
+            self.upscaling_mode = 'nearest'
         else:
             self.output_channels = 3
-            upscaling_mode = 'bilinear' 
-            align_corners_mode = True
+            self.upscaling_mode = 'bilinear' 
+            self.align_corners_mode = True
 
         input_vector_size = size_of_input
         self.mapped_image_channels = 1
@@ -410,8 +410,9 @@ class CNNToImage(torch.nn.Module):
         self.lin_decoder = torch.nn.Linear(input_vector_size, self.mapped_image_channels * self.mapped_image_height * self.mapped_image_width)
         # Define your CNN layers (convolutions, pooling, etc.)
         self.upconv1 = torch.nn.ConvTranspose2d(self.mapped_image_channels, 16, kernel_size=3, stride=2, padding=1)
-        self.upconv2 = torch.nn.ConvTranspose2d(16, self.output_channels, kernel_size=3, stride=2, padding=1)
+        self.upconv2 = torch.nn.ConvTranspose2d(16, 32, kernel_size=3, stride=2, padding=1)
         self.upconv3 = torch.nn.ConvTranspose2d(32, 64, kernel_size=3, stride=2, padding=1)
+        self.upconv4 = torch.nn.ConvTranspose2d(64, self.output_channels, kernel_size=3, stride=2, padding=1)
         #self.pool = torch.nn.MaxPool2d(kernel_size=2, stride=2, padding=0)
         
         # Instead of a fully connected layer, we'll have a final Conv2d layer that outputs an RGB image
@@ -419,38 +420,41 @@ class CNNToImage(torch.nn.Module):
         self.do_segmentation = do_segmentation
 
 
-        self.final_upconv = torch.nn.ConvTranspose2d(64, self.output_channels, kernel_size=3, stride=2, padding=1)
+        #self.final_upconv = torch.nn.ConvTranspose2d(64, self.output_channels, kernel_size=3, stride=2, padding=1)
 
         self.softmax = torch.nn.Softmax(dim=1)
         
         # Optionally, to ensure the output size matches the desired image size
-        self.upsample = torch.nn.Upsample(size=(224, 224), mode= upscaling_mode, align_corners=align_corners_mode)
+        self.upsample = torch.nn.Upsample(size=(224, 224), mode= self.upscaling_mode, align_corners=self.align_corners_mode)
 
     def forward(self, x):
 
         x = self.lin_decoder(x)
         x = x.view(-1, self.mapped_image_channels, self.mapped_image_height, self.mapped_image_width)
-        
         x = self.upconv1(x)
-        x = torch.relu(x)
+        x = torch.relu(x)      
         x = self.upconv2(x)
-        #x = torch.relu(x)
-        #x = self.upconv3(x)
-        #x = torch.relu(x)
-        #x = self.final_upconv(x)
+        x = torch.relu(x)
+        x = self.upconv3(x)
+        x = torch.relu(x)
+        x = self.upconv4(x)
 
         # Produce an RGB image with final convolution
         if self.do_segmentation:
             x = self.softmax(x)
         else:
-            x = torch.relu(x)
+            #x = torch.relu(x)
+            x = torch.sigmoid(x)
+
             #x = 255* torch.sigmoid(self.final_upconv(x))
         #x *= 255
 
         #try:
-        #    ha = g
+        #    ops = heheh
         #except:
-        #    print(torch.sum(x[0, :, 0, 0]))
-        x = self.upsample(x)
+        #    print(f"x shape = {x.shape}")
+        #    exit(0)
 
+        x = F.interpolate(x, size=(224, 224), mode=self.upscaling_mode, align_corners=self.align_corners_mode)
+        
         return x
