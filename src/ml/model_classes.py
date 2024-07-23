@@ -303,32 +303,9 @@ class ModelClass():
                 best_epoch_model = deepcopy(self.model)
                 best_epochs = current_epoch
 
-        """
-        total_preds, total_accuracy, F1, total_pred_per_class, correct_pred_per_class, predictions_for_each_label = self.test_model(model = best_epoch_model,
-                                                                                                                                    test_loader = self.validation_loader)
-
-        print(f'Accuracy of the network on the {total_preds} test images: {total_accuracy} %')
-        print(f'F1 Score: {F1}')
-        print(f'best val loss: {best_vloss}')
-        print(f'number of epochs (best): {best_epochs}\n')
-        for classname, correct_count in correct_pred_per_class.items():
-            accuracy = 100 * float(correct_count) / total_pred_per_class[classname]
-            print(f'Accuracy for class: {classname:5s} is {accuracy:.1f} %')    
-
-        if self.save_path:
-            with open(os.path.join(self.save_path, "accuracy_and_F1.txt"), 'w') as f:
-                f.write(f'Accuracy of the network on the {total_preds} test images: {total_accuracy} %\n')
-                f.write(f'F1 Score: {F1}\n')
-                f.write(f'best val loss: {best_vloss}\n')
-                f.write(f'number of epochs (best): {best_epochs}\n')
-                for classname, correct_count in correct_pred_per_class.items():
-                    accuracy = 100 * float(correct_count) / total_pred_per_class[classname]
-                    f.write(f'Accuracy for class: {classname:5s} is {accuracy:.1f} %\n')
-            
-            if save_pt_model:
-                torch.save(best_epoch_model, os.path.join(self.save_path, "resnet18_model.pt"))
-            
-        """
+        if  self.save_path and save_pt_model:
+            torch.save(best_epoch_model, os.path.join(self.save_path, "model.pt"))
+        
         plot_training(train_loss, valid_loss, best_vloss, best_epochs, best_avg_vloss_n_original_scale, self.save_path)    
 
         return train_loss, valid_loss
