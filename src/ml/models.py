@@ -51,6 +51,7 @@ class customFullyConnectedLayer(torch.nn.Module):
         x = self.dropout2(x)
         x = self.lin_out(x)
         #x = self.softmax_out(x)
+        x = torch.sigmoid(x)
         
         return x
     
@@ -233,14 +234,10 @@ class sequentialModel(torch.nn.Module):
                                              batch_first=True)
         else:
             self.lstm_franka_hidden_size = 0
-
-        self.lstm_cameras = torch.nn.LSTM(input_size=self.cnn_encoding_size * self.num_of_resnets,
-                                          hidden_size=self.lstm_camera_hidden_size,
-                                          num_layers= self.lstms_num_layers,
-                                          batch_first=True)
         
         
         self.resnets_list = torch.nn.ModuleList()
+        self.lstm_list = torch.nn.ModuleList()
         for _ in range(self.num_of_resnets):
             if kwargs["useResnet"]:
                 resnet = resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
@@ -253,28 +250,42 @@ class sequentialModel(torch.nn.Module):
             
             self.resnets_list.append(resnet)
 
+
+            self.lstm_list.append(
+                                torch.nn.LSTM(input_size=self.cnn_encoding_size,
+                                              hidden_size=self.lstm_camera_hidden_size,
+                                              num_layers= self.lstms_num_layers,
+                                              batch_first=True)
+                                )
+
         
         # Define a new fully connected layer
         if kwargs["generateImage"]:
-            self.fc = CNNToImage(size_of_input = self.lstm_franka_hidden_size + self.lstm_camera_hidden_size, do_segmentation= kwargs["do_segmentation"])
+            self.fc = CNNToImage(size_of_input = self.lstm_franka_hidden_size + self.num_of_resnets * self.lstm_camera_hidden_size, do_segmentation= kwargs["do_segmentation"])
         else:
-            self.fc = customFullyConnectedLayer(size_of_input = self.lstm_franka_hidden_size + self.lstm_camera_hidden_size, size_of_output = size_of_output)
+            self.fc = customFullyConnectedLayer(size_of_input = self.lstm_franka_hidden_size + self.num_of_resnets * self.lstm_camera_hidden_size, size_of_output = size_of_output)
         
 
     def forward(self, x):
         # Pass through the two ResNet18 models
         
         batch_size, seq_length, C, H, W = x[0].size()
-        cnn_tensor = torch.zeros(batch_size, seq_length, self.num_of_resnets * self.cnn_encoding_size, device= self.device)
-        
+        #cnn_tensor =   torch.zeros(batch_size, seq_length, self.num_of_resnets * self.cnn_encoding_size, device= self.device)
+        cam_lstm_out = torch.zeros(batch_size, self.num_of_resnets * self.lstm_camera_hidden_size, device= self.device)
+        lstm_out_list = list()
+        temp_cnn_tensor_list = [torch.zeros(batch_size, seq_length, self.cnn_encoding_size, device= self.device) for i in range(self.num_of_resnets)]
         #cnn_features = list()
         for i in range(self.num_of_resnets):
+            temp_cnn_tensor = torch.zeros(batch_size, seq_length, self.cnn_encoding_size, device=self.device)
             for t in range(seq_length):
-                cnn_tensor[:, t , self.cnn_encoding_size*i : self.cnn_encoding_size* (i+1)] = self.resnets_list[i](x[i][:, t, :, :, :])
-    
-        h0_cam = torch.zeros(self.lstms_num_layers, batch_size, self.lstm_camera_hidden_size).to(self.device)
-        c0_cam = torch.zeros(self.lstms_num_layers, batch_size, self.lstm_camera_hidden_size).to(self.device)
-        cam_lstm_out, (hidden_state, cell_state) = self.lstm_cameras(cnn_tensor, (h0_cam, c0_cam))
+                temp_cnn_tensor_list[i][:, t, :] = self.resnets_list[i](x[i][:, t, :, :, :])
+            
+            #cnn_tensor[:, :, self.cnn_encoding_size*i : self.cnn_encoding_size* (i+1)] = temp_cnn_tensor
+            h0_cam = torch.zeros(self.lstms_num_layers, batch_size, self.lstm_camera_hidden_size).to(self.device)
+            c0_cam = torch.zeros(self.lstms_num_layers, batch_size, self.lstm_camera_hidden_size).to(self.device)
+            lstm_out_list.append(self.lstm_list[i](temp_cnn_tensor, (h0_cam, c0_cam)))
+
+            cam_lstm_out[:, self.lstm_camera_hidden_size*i : self.lstm_camera_hidden_size* (i+1)] = lstm_out_list[-1][0][:, -1, :]
 
 
         if self.sum_of_linear_inputs_sizes:
@@ -282,15 +293,16 @@ class sequentialModel(torch.nn.Module):
             offset = 0
             for i, size in enumerate(self.linear_inputs_sizes):
                 franka_data_tensor[:, :, offset: offset+ size] = (x[i+self.num_of_resnets])
+                offset += size
 
             h0_franka = torch.zeros(self.lstms_num_layers, batch_size, self.lstm_franka_hidden_size).to(self.device)
             c0_franka = torch.zeros(self.lstms_num_layers, batch_size, self.lstm_franka_hidden_size).to(self.device)
             franka_lstm_out, (h_franka, c_franka) = self.lstm_franka(franka_data_tensor, (h0_franka, c0_franka))
 
-            fused_features = torch.cat((cam_lstm_out[:, -1, :], franka_lstm_out[:, -1, :]), dim=1)
+            fused_features = torch.cat((cam_lstm_out, franka_lstm_out[:, -1, :]), dim=1)
         
         else:
-            fused_features = cam_lstm_out[:, -1, :]
+            fused_features = cam_lstm_out
 
         output = self.fc(fused_features)
         
@@ -319,9 +331,9 @@ class sequentialModelFusingBeforeRNN(torch.nn.Module):
         
         self.lstm_hidden_size = self.lstm_franka_hidden_size + self.lstm_camera_hidden_size
         self.lstm_fused = torch.nn.LSTM(input_size=self.cnn_encoding_size * self.num_of_resnets + self.sum_of_linear_inputs_sizes,
-                                          hidden_size=self.lstm_hidden_size,
-                                          num_layers= self.lstms_num_layers,
-                                          batch_first=True)
+                                        hidden_size=self.lstm_hidden_size,
+                                        num_layers= self.lstms_num_layers,
+                                        batch_first=True)
         
         
         self.resnets_list = torch.nn.ModuleList()
@@ -364,6 +376,7 @@ class sequentialModelFusingBeforeRNN(torch.nn.Module):
             offset = 0
             for i, size in enumerate(self.linear_inputs_sizes):
                 franka_data_tensor[:, :, offset: offset+ size] = (x[i+self.num_of_resnets])
+                offset += size
 
             h0_franka = torch.zeros(self.lstms_num_layers, batch_size, self.lstm_franka_hidden_size).to(self.device)
             c0_franka = torch.zeros(self.lstms_num_layers, batch_size, self.lstm_franka_hidden_size).to(self.device)
@@ -407,14 +420,26 @@ class CNNToImage(torch.nn.Module):
         self.mapped_image_height = 32
         self.mapped_image_width = 32
 
-        self.lin_decoder = torch.nn.Linear(input_vector_size, self.mapped_image_channels * self.mapped_image_height * self.mapped_image_width)
-        # Define your CNN layers (convolutions, pooling, etc.)
-        self.upconv1 = torch.nn.ConvTranspose2d(self.mapped_image_channels, 16, kernel_size=3, stride=2, padding=1)
-        self.upconv2 = torch.nn.ConvTranspose2d(16, 32, kernel_size=3, stride=2, padding=1)
-        self.upconv3 = torch.nn.ConvTranspose2d(32, 64, kernel_size=3, stride=2, padding=1)
-        self.upconv4 = torch.nn.ConvTranspose2d(64, self.output_channels, kernel_size=3, stride=2, padding=1)
-        #self.pool = torch.nn.MaxPool2d(kernel_size=2, stride=2, padding=0)
+                
+        ngf = 64
+        nc = 3
+        nz = input_vector_size
+
+        self.conv1 = torch.nn.ConvTranspose2d(nz, ngf * 8, 4, 1, 0, bias=False)
+        self.bn1 = torch.nn.BatchNorm2d(ngf * 8)
         
+        self.conv2 = torch.nn.ConvTranspose2d(ngf * 8, ngf * 4, 4, 2, 1, bias=False)
+        self.bn2 = torch.nn.BatchNorm2d(ngf * 4)
+        
+        self.conv3 = torch.nn.ConvTranspose2d(ngf * 4, ngf * 2, 4, 2, 1, bias=False)
+        self.bn3 = torch.nn.BatchNorm2d(ngf * 2)
+        
+        self.conv4 = torch.nn.ConvTranspose2d(ngf * 2, ngf, 4, 2, 1, bias=False)
+        self.bn4 = torch.nn.BatchNorm2d(ngf)
+        
+        self.conv5 = torch.nn.ConvTranspose2d(ngf, nc, 4, 2, 1, bias=False)
+        #self.tanh = nn.Tanh()
+
         # Instead of a fully connected layer, we'll have a final Conv2d layer that outputs an RGB image
           # RGB image has 3 channels
         self.do_segmentation = do_segmentation
@@ -429,33 +454,33 @@ class CNNToImage(torch.nn.Module):
 
     def forward(self, x):
 
-        x = self.lin_decoder(x)
-        x = torch.relu(x)
-        x = x.view(-1, self.mapped_image_channels, self.mapped_image_height, self.mapped_image_width)
-        x = self.upconv1(x)
-        x = torch.relu(x)      
-        x = self.upconv2(x)
-        x = torch.relu(x)
-        x = self.upconv3(x)
-        x = torch.relu(x)
-        x = self.upconv4(x)
-
+        x = self.conv1(x.reshape(x.shape[0], x.shape[1], 1, 1))
+        x = self.bn1(x)
+        x = torch.nn.ReLU(True)(x)
+        
+        x = self.conv2(x)
+        x = self.bn2(x)
+        x = torch.nn.ReLU(True)(x)
+        
+        x = self.conv3(x)
+        x = self.bn3(x)
+        x = torch.nn.ReLU(True)(x)
+        
+        x = self.conv4(x)
+        x = self.bn4(x)
+        x = torch.nn.ReLU(True)(x)
+        
+        x = self.conv5(x)
+        
+        #output = self.tanh(x)
         # Produce an RGB image with final convolution
         if self.do_segmentation:
             x = self.softmax(x)
         else:
             #x = torch.relu(x)
             x = torch.sigmoid(x)
-
-            #x = 255* torch.sigmoid(self.final_upconv(x))
-        #x *= 255
-
-        #try:
-        #    ops = heheh
-        #except:
-        #    print(f"x shape = {x.shape}")
-        #    exit(0)
-
+ 
+        
         x = F.interpolate(x, size=(224, 224), mode=self.upscaling_mode, align_corners=self.align_corners_mode)
         
         return x
