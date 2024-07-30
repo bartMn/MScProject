@@ -11,6 +11,7 @@ from copy import deepcopy
 
 import os
 import sys
+from PIL import Image as im
 #module_path = os.path.abspath(os.path.join("../data"))
 module_path = os.path.dirname(os.path.abspath(__file__))
 
@@ -70,18 +71,7 @@ class ModelClass():
             os.mkdir(self.save_path)
 
         self.epochs_num = epochs_num
-        
-        if path_to_load_model:
-            self.training_loader = None
-            self.validation_loader = None
-            self.test_loader = None
-            self.classes = None
-            self.optimizer = None
-            self.loss_fn = None
-            self.model = torch.load(path_to_load_model, map_location=self.device)
-            self.model.to(self.device)
-            return
-      
+              
 
         NUM_OF_CAMERAS = 5
         camera_types = ["depth", "rgb", "segmented", "flow"]
@@ -130,6 +120,7 @@ class ModelClass():
                                         ])
         elif "cam" in self.output_data_key:
             transform_output_imgs = transforms.Compose([
+                                    #transforms.Resize(224),
                                     transforms.Resize(256),         # Resize the image to 256x256 pixels
                                     transforms.CenterCrop(224),     # Crop the center to 224x224 pixels
                                     transforms.ToTensor()           # Convert the image to a PyTorch tensor
@@ -169,6 +160,11 @@ class ModelClass():
 
 
 
+    def load_model(self, path_to_load_model):
+        self.model = torch.load(path_to_load_model, map_location=self.device)
+        self.model.to(self.device)
+            #return
+
     def init_model(self, neueons_in_hidden_layer = 50, dropout = 0.4, learning_rate = 0.1):
         
         self.model = resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
@@ -205,8 +201,7 @@ class ModelClass():
         Returns:
             float: The average loss value for the epoch.
         """
-
-        running_loss = 0.
+        running_loss = 0.0
 
         for i, data in tqdm(enumerate(self.training_loader), total=len(self.training_loader)):
             # Every data instance is an input + label pair
@@ -316,76 +311,49 @@ class ModelClass():
 
     def test_model(self,
                    model: torch.nn.Module = None,
-                   classes: List[str] = None,
-                   test_loader: DataLoader = None) -> Tuple[int,
-                                                            int,
-                                                            float,
-                                                            Dict[str, int],
-                                                            Dict[str, int],
-                                                            Dict[str, Dict[str, int]]]:
-        """
-        Tests the performance of the model on the test_loader dataset.
-
-        Args:
-            model (torch.nn.Module, optional): The PyTorch model to be evaluated. Defaults to None, in which case the stored model is used.
-            classes (List[str], optional): A list of class labels. Defaults to None, in which case the stored class labels are used.
-            test_loader (DataLoader, optional): The data loader for the test/evaluation dataset. Defaults to None, in which case the stored test loader is used.
-
-        Returns:
-            Tuple[int, int, float, Dict[str, int], Dict[str, int], Dict[str, Dict[str, int]]]:
-                the returned tuple contains the following:
-                - total_preds (int): The total number of predictions made.
-                - total_accuracy (int): The accuracy of the model on the test dataset.
-                - F1 (float): The F1 score of the model on the test dataset.
-                - total_pred_per_class (Dict[str, int]): A dictionary containing the total number of predictions per class.
-                - correct_pred_per_class (Dict[str, int]): A dictionary containing the number of correct predictions per class.
-                - predictions_for_each_label (Dict[str, Dict[str, int]]): A nested dictionary that is a confusion matrix of predicitons made.
-        """               
+                   test_loader: DataLoader = None):
+                 
 
         if model is None:
             model = self.model
             
-        if classes is None:
-            classes = self.classes
-            
         if test_loader is None:
-            test_loader = self.test_loader
+            test_loader = self.validation_loader
 
 
         model.train(False)
 
-        correct_pred_per_class = {classname: 0 for classname in classes}
-        total_pred_per_class = {classname: 0 for classname in classes}
-        predictions_for_each_label = {real_classname: {predicted_classname: 0 for predicted_classname in classes} for real_classname in classes}
-        correct_total = 0
-        total_preds = 0
-        all_labels = []
-        all_predictions = []
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-        # again no gradients needed
         with torch.no_grad():
-            for data in tqdm(test_loader):
-                images, labels = data
-                images = images.to(device)
-                labels = labels.to(device)
-                outputs = model(images)
-                _, predictions = torch.max(outputs, 1)
-                total_preds += labels.size(0)
-                correct_total += (predictions == labels).sum().item()
-                # collect the correct predictions for each class
-                for label, prediction in zip(labels, predictions):
-                    all_labels.append(label.item())
-                    all_predictions.append(prediction.item())
-                    if label == prediction:
-                        correct_pred_per_class[classes[label]] += 1
-                    total_pred_per_class[classes[label]] += 1
-                    predictions_for_each_label[classes[label]][classes[prediction]] += 1    
+            for i, vdata in enumerate(test_loader):
+                vinputs, vlabels = self.get_inputs_and_labels(vdata)
+                voutputs = self.model(vinputs)
+                vloss = self.loss_fn(voutputs, vlabels)
 
-        total_accuracy = 1.0 * correct_total / total_preds
-        F1 = f1_score(all_labels, all_predictions, average='weighted')
+                for i in range(10):
+                    #
 
-        return total_preds, total_accuracy, F1, total_pred_per_class, correct_pred_per_class, predictions_for_each_label
+                    # Example tensor of size 3 x M x N
+                    tensor = voutputs[i] * 255  # This creates a tensor with values in range [0, 255]
+                    tensor = tensor.byte()  # Convert to byte format
+                    tensor = tensor.cpu()
+                    # Convert the tensor to a NumPy array
+                    np_array = tensor.numpy()
+
+                    # Transpose the array to match the shape (M, N, 3)
+                    np_array = np.transpose(np_array, (1, 2, 0))
+
+                    # Convert the NumPy array to a PIL image
+                    image = im.fromarray(np_array)
+
+                    # Display the image
+                    image.show()
+                #epoch_vloss += vloss
+
+                #if "cam" not in self.output_data_key:
+                #    vloss_in_original_scale = self.loss_fn(self.denormalize(voutputs, self.output_data_key), self.denormalize(vlabels, self.output_data_key))
+                #else:
+                #    vloss_in_original_scale = 0
+                #epoch_vloss_in_original_scale += vloss_in_original_scale
 
 
 def plot_training(train_loss: np.ndarray, valid_loss: np.ndarray, best_valid_loss:float, best_valid_loss_epoch_num: int, best_valid_loss_epoch_num_in_m:float,  save_path: str = None) -> None:
@@ -417,6 +385,13 @@ def plot_training(train_loss: np.ndarray, valid_loss: np.ndarray, best_valid_los
        graph_path = os.path.join(save_path, "training_over_epochs.png")
        plt.savefig(graph_path)
        plt.close()
+
+       #print(f"valid_loss sh = {valid_loss.shape}")
+       #print(f"train_loss sh = {train_loss.shape}")
+       losses_array = np.column_stack((train_loss, valid_loss))
+       #print(f"losses_array sh = {losses_array.shape}")
+       np.savetxt(os.path.join(save_path, "losses.csv"), losses_array, delimiter=",")
+
     else:
         plt.show()
 
@@ -453,7 +428,7 @@ class twoCamsModelClass(ModelClass):
 class multiModalClass(ModelClass):
 
 
-    def init_model(self, neueons_in_hidden_layer = 50, dropout = 0.4, learning_rate = 0.1, input_data_keys = None):
+    def init_model(self, neueons_in_hidden_layer = 50, dropout = 0.4, learning_rate = 0.1, input_data_keys = None, path_to_load_model = None):
  
         self.input_data_keys = input_data_keys
         #self.size_of_output = 3
@@ -500,8 +475,14 @@ class multiModalClass(ModelClass):
             self.loss_fn = torch.nn.CrossEntropyLoss()
             #self.loss_fn = torch.nn.MSELoss()
 
-
         
+        if path_to_load_model:
+            self.load_model(path_to_load_model)
+            beta1 = 0.5
+            self.optimizer = Adam(filter(lambda p: p.requires_grad, self.model.parameters()), lr = learning_rate, betas=(beta1, 0.999))
+            return
+
+
         if self.sequential_data and self.kwargs['fusing_before_RNN']:
             self.model = sequentialModelFusingBeforeRNN(neueons_in_hidden_layer = neueons_in_hidden_layer,
                                           dropout = dropout,
@@ -514,6 +495,8 @@ class multiModalClass(ModelClass):
                                           generateImage = self.kwargs['generateImage'],
                                           do_segmentation = self.kwargs["do_segmentation"]
                                           )
+            beta1 = 0.5
+            self.optimizer = Adam(filter(lambda p: p.requires_grad, self.model.parameters()), lr = learning_rate, betas=(beta1, 0.999))
             
         elif self.sequential_data: 
             self.model = sequentialModel(neueons_in_hidden_layer = neueons_in_hidden_layer,
@@ -527,6 +510,8 @@ class multiModalClass(ModelClass):
                                           generateImage = self.kwargs['generateImage'],
                                           do_segmentation = self.kwargs["do_segmentation"]
                                           )
+            beta1 = 0.5
+            self.optimizer = Adam(filter(lambda p: p.requires_grad, self.model.parameters()), lr = learning_rate, betas=(beta1, 0.999))
 
         else:
             self.model = multimodalMoldel(neueons_in_hidden_layer = neueons_in_hidden_layer,
@@ -539,8 +524,8 @@ class multiModalClass(ModelClass):
                                           generateImage = self.kwargs['generateImage'],
                                           do_segmentation = self.kwargs["do_segmentation"]
                                           )
+            self.optimizer = Adam(filter(lambda p: p.requires_grad, self.model.parameters()), lr = learning_rate)
 
-        self.optimizer = Adam(filter(lambda p: p.requires_grad, self.model.parameters()), lr = learning_rate)
         
         self.model.to(self.device)
 
