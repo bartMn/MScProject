@@ -478,8 +478,8 @@ class multiModalClass(ModelClass):
         
         if path_to_load_model:
             self.load_model(path_to_load_model)
-            beta1 = 0.5
-            self.optimizer = Adam(filter(lambda p: p.requires_grad, self.model.parameters()), lr = learning_rate, betas=(beta1, 0.999))
+            #beta1 = 0.5
+            #self.optimizer = Adam(filter(lambda p: p.requires_grad, self.model.parameters()), lr = learning_rate, betas=(beta1, 0.999))
             return
 
 
@@ -495,8 +495,8 @@ class multiModalClass(ModelClass):
                                           generateImage = self.kwargs['generateImage'],
                                           do_segmentation = self.kwargs["do_segmentation"]
                                           )
-            beta1 = 0.5
-            self.optimizer = Adam(filter(lambda p: p.requires_grad, self.model.parameters()), lr = learning_rate, betas=(beta1, 0.999))
+            #beta1 = 0.5
+            #self.optimizer = Adam(filter(lambda p: p.requires_grad, self.model.parameters()), lr = learning_rate, betas=(beta1, 0.999))
             
         elif self.sequential_data: 
             self.model = sequentialModel(neueons_in_hidden_layer = neueons_in_hidden_layer,
@@ -510,8 +510,8 @@ class multiModalClass(ModelClass):
                                           generateImage = self.kwargs['generateImage'],
                                           do_segmentation = self.kwargs["do_segmentation"]
                                           )
-            beta1 = 0.5
-            self.optimizer = Adam(filter(lambda p: p.requires_grad, self.model.parameters()), lr = learning_rate, betas=(beta1, 0.999))
+            #beta1 = 0.5
+            #self.optimizer = Adam(filter(lambda p: p.requires_grad, self.model.parameters()), lr = learning_rate, betas=(beta1, 0.999))
 
         else:
             self.model = multimodalMoldel(neueons_in_hidden_layer = neueons_in_hidden_layer,
@@ -524,9 +524,16 @@ class multiModalClass(ModelClass):
                                           generateImage = self.kwargs['generateImage'],
                                           do_segmentation = self.kwargs["do_segmentation"]
                                           )
-            self.optimizer = Adam(filter(lambda p: p.requires_grad, self.model.parameters()), lr = learning_rate)
+            #self.optimizer = Adam(filter(lambda p: p.requires_grad, self.model.parameters()), lr = learning_rate)
 
         
+        if 'cam' in self.output_data_key:
+            beta1 = 0.5
+            self.optimizer = Adam(filter(lambda p: p.requires_grad, self.model.parameters()), lr = learning_rate, betas=(beta1, 0.999))
+        else:
+            self.optimizer = Adam(filter(lambda p: p.requires_grad, self.model.parameters()), lr = learning_rate)
+
+
         self.model.to(self.device)
 
 
