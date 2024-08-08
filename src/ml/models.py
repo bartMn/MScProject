@@ -228,7 +228,7 @@ class sequentialModel(torch.nn.Module):
 
         
         if self.sum_of_linear_inputs_sizes:
-            self.lstm_franka = torch.nn.LSTM(input_size= self.sum_of_linear_inputs_sizes,
+            self.lstm_franka = torch.nn.LSTM(input_size= 32,
                                              hidden_size=self.lstm_franka_hidden_size,
                                              num_layers= self.lstms_num_layers,
                                              batch_first=True)
@@ -258,14 +258,14 @@ class sequentialModel(torch.nn.Module):
                                               batch_first=True)
                                 )
 
-        
+        self.mlp = customFullyConnectedLayer(size_of_input = sum(linear_inputs_sizes), size_of_output = 32)
         # Define a new fully connected layer
         if kwargs["generateImage"]:
             self.fc = CNNToImage(size_of_input = self.lstm_franka_hidden_size + self.num_of_resnets * self.lstm_camera_hidden_size, do_segmentation= kwargs["do_segmentation"])
         else:
             self.fc = customFullyConnectedLayer(size_of_input = self.lstm_franka_hidden_size + self.num_of_resnets * self.lstm_camera_hidden_size, size_of_output = size_of_output)
         
-
+         
     def forward(self, x):
         # Pass through the two ResNet18 models
         
@@ -276,14 +276,14 @@ class sequentialModel(torch.nn.Module):
         temp_cnn_tensor_list = [torch.zeros(batch_size, seq_length, self.cnn_encoding_size, device= self.device) for i in range(self.num_of_resnets)]
         #cnn_features = list()
         for i in range(self.num_of_resnets):
-            temp_cnn_tensor = torch.zeros(batch_size, seq_length, self.cnn_encoding_size, device=self.device)
+            #temp_cnn_tensor = torch.zeros(batch_size, seq_length, self.cnn_encoding_size, device=self.device)
             for t in range(seq_length):
                 temp_cnn_tensor_list[i][:, t, :] = self.resnets_list[i](x[i][:, t, :, :, :])
             
             #cnn_tensor[:, :, self.cnn_encoding_size*i : self.cnn_encoding_size* (i+1)] = temp_cnn_tensor
             h0_cam = torch.zeros(self.lstms_num_layers, batch_size, self.lstm_camera_hidden_size).to(self.device)
             c0_cam = torch.zeros(self.lstms_num_layers, batch_size, self.lstm_camera_hidden_size).to(self.device)
-            lstm_out_list.append(self.lstm_list[i](temp_cnn_tensor, (h0_cam, c0_cam)))
+            lstm_out_list.append(self.lstm_list[i](temp_cnn_tensor_list[i], (h0_cam, c0_cam)))
 
             cam_lstm_out[:, self.lstm_camera_hidden_size*i : self.lstm_camera_hidden_size* (i+1)] = lstm_out_list[-1][0][:, -1, :]
 
@@ -295,9 +295,14 @@ class sequentialModel(torch.nn.Module):
                 franka_data_tensor[:, :, offset: offset+ size] = (x[i+self.num_of_resnets])
                 offset += size
 
+            mlp_out = torch.zeros(batch_size, seq_length, 32, device= self.device)
+            for t in range(seq_length):
+                mlp_out[:, t ,:] = self.mlp(franka_data_tensor[:, t, :])
+
+            
             h0_franka = torch.zeros(self.lstms_num_layers, batch_size, self.lstm_franka_hidden_size).to(self.device)
             c0_franka = torch.zeros(self.lstms_num_layers, batch_size, self.lstm_franka_hidden_size).to(self.device)
-            franka_lstm_out, (h_franka, c_franka) = self.lstm_franka(franka_data_tensor, (h0_franka, c0_franka))
+            franka_lstm_out, (h_franka, c_franka) = self.lstm_franka(mlp_out, (h0_franka, c0_franka))
 
             fused_features = torch.cat((cam_lstm_out, franka_lstm_out[:, -1, :]), dim=1)
         
@@ -330,7 +335,7 @@ class sequentialModelFusingBeforeRNN(torch.nn.Module):
             self.lstm_franka_hidden_size = 0
         
         self.lstm_hidden_size = self.lstm_franka_hidden_size + self.lstm_camera_hidden_size
-        self.lstm_fused = torch.nn.LSTM(input_size=self.cnn_encoding_size * self.num_of_resnets + self.sum_of_linear_inputs_sizes,
+        self.lstm_fused = torch.nn.LSTM(input_size=self.cnn_encoding_size * self.num_of_resnets + 32,
                                         hidden_size=self.lstm_hidden_size,
                                         num_layers= self.lstms_num_layers,
                                         batch_first=True)
@@ -350,6 +355,9 @@ class sequentialModelFusingBeforeRNN(torch.nn.Module):
             self.resnets_list.append(resnet)
 
         
+        self.mlp = customFullyConnectedLayer(size_of_input = sum(linear_inputs_sizes), size_of_output = 32)
+        # Define a new fully connected layer
+
         # Define a new fully connected layer
         if kwargs["generateImage"]:
             self.fc = CNNToImage(size_of_input = self.lstm_hidden_size, do_segmentation= kwargs["do_segmentation"])
@@ -381,7 +389,9 @@ class sequentialModelFusingBeforeRNN(torch.nn.Module):
             h0_franka = torch.zeros(self.lstms_num_layers, batch_size, self.lstm_franka_hidden_size).to(self.device)
             c0_franka = torch.zeros(self.lstms_num_layers, batch_size, self.lstm_franka_hidden_size).to(self.device)
 
-            fused_tensor = torch.cat((cnn_tensor, franka_data_tensor), dim = 2)
+            mlp_out = self.mlp(franka_data_tensor)
+            
+            fused_tensor = torch.cat((cnn_tensor, mlp_out), dim = 2)
             fused_h0_cam = torch.cat((h0_cam, h0_franka), dim = 2)
             fused_c0_cam = torch.cat((c0_cam, c0_franka), dim = 2)
 
