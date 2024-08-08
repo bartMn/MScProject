@@ -67,7 +67,7 @@ class ModelClass():
         self.sequential_data = sequential_data
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.save_path = save_path
-        if not os.path.exists(self.save_path):
+        if self.save_path and not os.path.exists(self.save_path):
             os.mkdir(self.save_path)
 
         self.epochs_num = epochs_num
@@ -130,22 +130,23 @@ class ModelClass():
         
         torch.manual_seed(0) #added maual seed to make sure the random split is the same every time
 
-        used_keys = input_data_keys + [self.output_data_key]
+        self.used_keys = input_data_keys + [self.output_data_key]
         
         if self.sequential_data:
+            self.sequence_length = sequence_length
             full_training_set = sequentialSampleDataset(data_dict_dir,
                                                         transform=transform,
                                                         sequence_length=sequence_length,
                                                         transform_output_imgs = transform_output_imgs,
                                                         output_data_key = self.output_data_key,
-                                                        used_keys = used_keys,
+                                                        used_keys = self.used_keys,
                                                         one_hot_for_segmentation = one_hot_for_segmentation)
         else:
             full_training_set = singleSampleDataset(data_dict_dir,
                                                     transform=transform,
                                                     transform_output_imgs = transform_output_imgs,
                                                     output_data_key =output_data_key,
-                                                    used_keys = used_keys,
+                                                    used_keys = self.used_keys,
                                                     one_hot_for_segmentation = one_hot_for_segmentation)
             
         self.csv_min_max = full_training_set.csv_min_max.copy()
@@ -311,49 +312,164 @@ class ModelClass():
 
     def test_model(self,
                    model: torch.nn.Module = None,
-                   test_loader: DataLoader = None):
+                   use_test_set:bool = False):
                  
 
         if model is None:
             model = self.model
             
-        if test_loader is None:
+        if use_test_set is False:
             test_loader = self.validation_loader
+
+        else:
+
+            ###################################################################################################
+            NUM_OF_CAMERAS = 5
+            camera_types = ["depth", "rgb", "segmented", "flow"]
+            data_root = "/home/bart/project/test_set"
+
+            data_dict_dir = dict()
+            data_dict_dir["franka_actions"] = f"{data_root}{os.sep}franka_robot{os.sep}actions"
+            data_dict_dir["franka_forces"] = f"{data_root}{os.sep}franka_robot{os.sep}dof_forces"
+            data_dict_dir["franka_state"] = f"{data_root}{os.sep}franka_robot{os.sep}dof_state"
+            data_dict_dir["boxes_pos0"] = f"{data_root}{os.sep}boxes{os.sep}position{os.sep}box0"
+            data_dict_dir["boxes_pos1"] = f"{data_root}{os.sep}boxes{os.sep}position{os.sep}box1"
+            data_dict_dir["boxes_vel0"] = f"{data_root}{os.sep}boxes{os.sep}velocity{os.sep}box0"
+            data_dict_dir["boxes_vel1"] = f"{data_root}{os.sep}boxes{os.sep}velocity{os.sep}box1"
+
+
+            for cam_num in range(NUM_OF_CAMERAS):
+                for camera_type in camera_types:
+                    data_dict_dir[f"cam{cam_num}_{camera_type}"] = f"{data_root}{os.sep}cameras{os.sep}{camera_type}{os.sep}cam{cam_num}"
+
+            #transform = transforms.Compose([
+            #    transforms.Resize((224, 224)),
+            #    transforms.ToTensor()
+            #])
+
+            if 'do_segmentation' in self.kwargs:
+                one_hot_for_segmentation = self.kwargs['do_segmentation']
+            else:
+                one_hot_for_segmentation = False
+
+            transform = transforms.Compose([
+                                        transforms.Resize(256),         # Resize the image to 256x256 pixels
+                                        transforms.CenterCrop(224),     # Crop the center to 224x224 pixels
+                                        transforms.ToTensor(),           # Convert the image to a PyTorch tensor
+                                        transforms.Normalize(
+                                                            mean=[0.485, 0.456, 0.406],  # Normalize the image based on ImageNet statistics
+                                                            std=[0.229, 0.224, 0.225]
+                                                            )
+                                        ])
+
+            if one_hot_for_segmentation:
+                transform_output_imgs = transforms.Compose([
+                                            transforms.Resize(256),         # Resize the image to 256x256 pixels
+                                            transforms.CenterCrop(224),     # Crop the center to 224x224 pixels
+                                            #transforms.ToTensor()           # Convert the image to a PyTorch tensor
+                                            ])
+            elif "cam" in self.output_data_key:
+                transform_output_imgs = transforms.Compose([
+                                        #transforms.Resize(224),
+                                        transforms.Resize(256),         # Resize the image to 256x256 pixels
+                                        transforms.CenterCrop(224),     # Crop the center to 224x224 pixels
+                                        transforms.ToTensor()           # Convert the image to a PyTorch tensor
+                                        ])
+            else:
+                transform_output_imgs = None
+            ####################################################################################################
+            if self.sequential_data:
+                test_set = sequentialSampleDataset(data_dict_dir,
+                                                            transform=transform,
+                                                            sequence_length= self.sequence_length,
+                                                            transform_output_imgs = transform_output_imgs,
+                                                            output_data_key = self.output_data_key,
+                                                            used_keys = self.used_keys,
+                                                            one_hot_for_segmentation = one_hot_for_segmentation)
+            else:
+                test_set = singleSampleDataset(data_dict_dir,
+                                                        transform=transform,
+                                                        transform_output_imgs = transform_output_imgs,
+                                                        output_data_key = self.output_data_key,
+                                                        used_keys = self.used_keys,
+                                                        one_hot_for_segmentation = one_hot_for_segmentation)
+
+            self.csv_min_max = test_set.csv_min_max.copy()
+
+            #full_training_set.remove_unused_keys(input_data_keys + [self.output_data_key])
+            #train_size = int(train_val_split * len(full_training_set))
+            #val_size = len(full_training_set) - train_size
+            #training_set, validation_set = random_split(full_training_set, [train_size, val_size])
+
+            test_loader = DataLoader(test_set, batch_size=64, shuffle=False, num_workers=3)
+
 
 
         model.train(False)
-
+        epoch_vloss = 0.0
+        epoch_vloss_in_original_scale = 0.0
+        
+        frame_counter = 0
         with torch.no_grad():
             for i, vdata in enumerate(test_loader):
                 vinputs, vlabels = self.get_inputs_and_labels(vdata)
                 voutputs = self.model(vinputs)
                 vloss = self.loss_fn(voutputs, vlabels)
+                epoch_vloss += vloss
 
-                for i in range(10):
-                    #
+                if "cam" in self.output_data_key:
+                    for i in range(vlabels.shape[0]):
+                        show_img(voutputs, vlabels, i, frame_counter)
+                        frame_counter += 1
 
-                    # Example tensor of size 3 x M x N
-                    tensor = voutputs[i] * 255  # This creates a tensor with values in range [0, 255]
-                    tensor = tensor.byte()  # Convert to byte format
-                    tensor = tensor.cpu()
-                    # Convert the tensor to a NumPy array
-                    np_array = tensor.numpy()
+                if "cam" not in self.output_data_key:
+                    vloss_in_original_scale = self.loss_fn(self.denormalize(voutputs, self.output_data_key), self.denormalize(vlabels, self.output_data_key))
+                else:
+                    vloss_in_original_scale = 0
+                epoch_vloss_in_original_scale += vloss_in_original_scale
 
-                    # Transpose the array to match the shape (M, N, 3)
-                    np_array = np.transpose(np_array, (1, 2, 0))
+                    
+        avg_vloss = epoch_vloss / (i + 1)
+        avg_vloss_n_original_scale = epoch_vloss_in_original_scale / (i + 1)
+        print(f'LOSS test: {avg_vloss}, loss (in m): {avg_vloss_n_original_scale}')
+        
 
-                    # Convert the NumPy array to a PIL image
-                    image = im.fromarray(np_array)
+def show_img(voutputs, vlabels, idx, frame_counter):
 
-                    # Display the image
-                    image.show()
-                #epoch_vloss += vloss
+    # Convert the first tensor to a NumPy array and then to a PIL image
+    tensor1 = voutputs[idx] * 255  # This creates a tensor with values in range [0, 255]
+    tensor1 = tensor1.byte()  # Convert to byte format
+    tensor1 = tensor1.cpu()
+    np_array1 = tensor1.numpy()
+    np_array1 = np.transpose(np_array1, (1, 2, 0))  # Transpose to match the shape (M, N, 3)
+    image1 = im.fromarray(np_array1)
 
-                #if "cam" not in self.output_data_key:
-                #    vloss_in_original_scale = self.loss_fn(self.denormalize(voutputs, self.output_data_key), self.denormalize(vlabels, self.output_data_key))
-                #else:
-                #    vloss_in_original_scale = 0
-                #epoch_vloss_in_original_scale += vloss_in_original_scale
+    # Convert the second tensor to a NumPy array and then to a PIL image
+    tensor2 = vlabels[idx] * 255  # This creates a tensor with values in range [0, 255]
+    tensor2 = tensor2.byte()  # Convert to byte format
+    tensor2 = tensor2.cpu()
+    np_array2 = tensor2.numpy()
+    np_array2 = np.transpose(np_array2, (1, 2, 0))  # Transpose to match the shape (M, N, 3)
+    image2 = im.fromarray(np_array2)
+
+    # Ensure both images have the same height
+    if image1.size[1] != image2.size[1]:
+        # Resize images to the same height if necessary
+        common_height = min(image1.size[1], image2.size[1])
+        image1 = image1.resize((image1.size[0], common_height))
+        image2 = image2.resize((image2.size[0], common_height))
+
+    # Concatenate the images horizontally
+    total_width = image1.width + image2.width
+    max_height = max(image1.height, image2.height)
+    combined_image = im.new('RGB', (total_width, max_height))
+    combined_image.paste(image1, (0, 0))
+    combined_image.paste(image2, (image1.width, 0))
+
+    # Display the combined image
+    #combined_image.show()
+    filename = f"/home/bart/project/test_set/flow_predicitons{os.sep}flow_comparison{frame_counter}.png"
+    combined_image.save(filename)
 
 
 def plot_training(train_loss: np.ndarray, valid_loss: np.ndarray, best_valid_loss:float, best_valid_loss_epoch_num: int, best_valid_loss_epoch_num_in_m:float,  save_path: str = None) -> None:
