@@ -65,6 +65,13 @@ class ModelClass():
             self.size_of_output= 3
 
         self.sequential_data = sequential_data
+
+        if sequential_data:
+            if 'future_sample_num' in self.kwargs:
+                self.future_sample_num = self.kwargs['future_sample_num']
+            else:
+                self.future_sample_num = 0
+
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.save_path = save_path
         if self.save_path and not os.path.exists(self.save_path):
@@ -140,7 +147,8 @@ class ModelClass():
                                                         transform_output_imgs = transform_output_imgs,
                                                         output_data_key = self.output_data_key,
                                                         used_keys = self.used_keys,
-                                                        one_hot_for_segmentation = one_hot_for_segmentation)
+                                                        one_hot_for_segmentation = one_hot_for_segmentation,
+                                                        future_sample_num = self.future_sample_num)
         else:
             full_training_set = singleSampleDataset(data_dict_dir,
                                                     transform=transform,
@@ -380,19 +388,20 @@ class ModelClass():
             ####################################################################################################
             if self.sequential_data:
                 test_set = sequentialSampleDataset(data_dict_dir,
-                                                            transform=transform,
-                                                            sequence_length= self.sequence_length,
-                                                            transform_output_imgs = transform_output_imgs,
-                                                            output_data_key = self.output_data_key,
-                                                            used_keys = self.used_keys,
-                                                            one_hot_for_segmentation = one_hot_for_segmentation)
+                                                   transform=transform,
+                                                   sequence_length= self.sequence_length,
+                                                   transform_output_imgs = transform_output_imgs,
+                                                   output_data_key = self.output_data_key,
+                                                   used_keys = self.used_keys,
+                                                   one_hot_for_segmentation = one_hot_for_segmentation,
+                                                   future_sample_num = self.future_sample_num)
             else:
                 test_set = singleSampleDataset(data_dict_dir,
-                                                        transform=transform,
-                                                        transform_output_imgs = transform_output_imgs,
-                                                        output_data_key = self.output_data_key,
-                                                        used_keys = self.used_keys,
-                                                        one_hot_for_segmentation = one_hot_for_segmentation)
+                                               transform=transform,
+                                               transform_output_imgs = transform_output_imgs,
+                                               output_data_key = self.output_data_key,
+                                               used_keys = self.used_keys,
+                                               one_hot_for_segmentation = one_hot_for_segmentation)
 
             self.csv_min_max = test_set.csv_min_max.copy()
 
@@ -417,9 +426,17 @@ class ModelClass():
                 vloss = self.loss_fn(voutputs, vlabels)
                 epoch_vloss += vloss
 
+                if one_hot_for_segmentation:
+                    voutputs = one_hot_to_rgb_batch(voutputs)
+                    vlabels = one_hot_to_rgb_batch(vlabels)
+                    loop_range = len(vlabels)
+
+                else:
+                    loop_range = vlabels.shape[0]
+
                 if "cam" in self.output_data_key:
-                    for i in range(vlabels.shape[0]):
-                        show_img(voutputs, vlabels, i, frame_counter)
+                    for i in range(loop_range):
+                        show_img(voutputs, vlabels, i, frame_counter, one_hot_for_segmentation)
                         frame_counter += 1
 
                 if "cam" not in self.output_data_key:
@@ -434,23 +451,30 @@ class ModelClass():
         print(f'LOSS test: {avg_vloss}, loss (in m): {avg_vloss_n_original_scale}')
         
 
-def show_img(voutputs, vlabels, idx, frame_counter):
+def show_img(voutputs, vlabels, idx, frame_counter, one_hot_for_segmentation):
 
     # Convert the first tensor to a NumPy array and then to a PIL image
-    tensor1 = voutputs[idx] * 255  # This creates a tensor with values in range [0, 255]
-    tensor1 = tensor1.byte()  # Convert to byte format
-    tensor1 = tensor1.cpu()
-    np_array1 = tensor1.numpy()
-    np_array1 = np.transpose(np_array1, (1, 2, 0))  # Transpose to match the shape (M, N, 3)
-    image1 = im.fromarray(np_array1)
+    if one_hot_for_segmentation:
+        image1 = voutputs[idx]
+    else:        
+        tensor1 = voutputs[idx] * 255  # This creates a tensor with values in range [0, 255]
+        tensor1 = tensor1.byte()  # Convert to byte format
+        tensor1 = tensor1.cpu()
+        np_array1 = tensor1.numpy()
+        np_array1 = np.transpose(np_array1, (1, 2, 0))  # Transpose to match the shape (M, N, 3)
+        image1 = im.fromarray(np_array1)
 
     # Convert the second tensor to a NumPy array and then to a PIL image
-    tensor2 = vlabels[idx] * 255  # This creates a tensor with values in range [0, 255]
-    tensor2 = tensor2.byte()  # Convert to byte format
-    tensor2 = tensor2.cpu()
-    np_array2 = tensor2.numpy()
-    np_array2 = np.transpose(np_array2, (1, 2, 0))  # Transpose to match the shape (M, N, 3)
-    image2 = im.fromarray(np_array2)
+    if one_hot_for_segmentation:
+        image2 = vlabels[idx]
+    
+    else:
+        tensor2 = vlabels[idx] * 255  # This creates a tensor with values in range [0, 255]
+        tensor2 = tensor2.byte()  # Convert to byte format
+        tensor2 = tensor2.cpu()
+        np_array2 = tensor2.numpy()
+        np_array2 = np.transpose(np_array2, (1, 2, 0))  # Transpose to match the shape (M, N, 3)
+        image2 = im.fromarray(np_array2)
 
     # Ensure both images have the same height
     if image1.size[1] != image2.size[1]:
@@ -468,8 +492,42 @@ def show_img(voutputs, vlabels, idx, frame_counter):
 
     # Display the combined image
     #combined_image.show()
-    filename = f"/home/bart/project/test_set/flow_predicitons{os.sep}flow_comparison{frame_counter}.png"
+    filename = f"/home/bart/project/test_set/predictions/flow_predicitons{os.sep}flow_comparison{frame_counter}.png"
     combined_image.save(filename)
+
+def one_hot_to_rgb_batch(one_hot_tensor):
+    to_return = list()
+    for img in one_hot_tensor:
+        rgb_img = one_hot_to_rgb(img.cpu())
+        rgb_img = im.fromarray(rgb_img)
+        to_return.append(rgb_img)
+
+    return to_return
+
+
+def one_hot_to_rgb(one_hot_tensor):
+    colors = [(25, 255, 140),
+              (255, 255, 25),
+              (25, 25, 255),
+              (0, 0, 0),
+              (140, 25, 140)
+            ]
+    
+    # Get the height and width from the one-hot tensor
+    num_classes, height, width = one_hot_tensor.shape
+    
+    # Create an empty RGB image
+    rgb_image = np.zeros((height, width, 3), dtype=np.uint8)
+    
+    # Convert one-hot tensor back to class indices
+    class_indices = torch.argmax(one_hot_tensor, dim=0).numpy()
+    
+    # Map class indices back to RGB colors
+    for class_index, color in enumerate(colors):
+        mask = (class_indices == class_index)
+        rgb_image[mask] = color
+    
+    return rgb_image
 
 
 def plot_training(train_loss: np.ndarray, valid_loss: np.ndarray, best_valid_loss:float, best_valid_loss_epoch_num: int, best_valid_loss_epoch_num_in_m:float,  save_path: str = None) -> None:
@@ -544,7 +602,7 @@ class twoCamsModelClass(ModelClass):
 class multiModalClass(ModelClass):
 
 
-    def init_model(self, neueons_in_hidden_layer = 50, dropout = 0.4, learning_rate = 0.1, input_data_keys = None, path_to_load_model = None):
+    def init_model(self, neueons_in_hidden_layer = 50, dropout = 0.4, learning_rate = 0.1, input_data_keys = None, path_to_load_model = None, transfer = False):
  
         self.input_data_keys = input_data_keys
         #self.size_of_output = 3
@@ -592,10 +650,10 @@ class multiModalClass(ModelClass):
             #self.loss_fn = torch.nn.MSELoss()
 
         
-        if path_to_load_model:
+        if path_to_load_model and not transfer:
             self.load_model(path_to_load_model)
-            #beta1 = 0.5
-            #self.optimizer = Adam(filter(lambda p: p.requires_grad, self.model.parameters()), lr = learning_rate, betas=(beta1, 0.999))
+            beta1 = 0.5
+            self.optimizer = Adam(filter(lambda p: p.requires_grad, self.model.parameters()), lr = learning_rate, betas=(beta1, 0.999))
             return
 
 
@@ -652,6 +710,11 @@ class multiModalClass(ModelClass):
 
         self.model.to(self.device)
 
+        if path_to_load_model and transfer:
+            print("USING WEIGHTS OF OLD MODEL...")
+            self.transfer_model(path_to_load_model)
+            print("WEIGHTS LOADED :)")
+
 
     def get_inputs_and_labels(self, data):
         #print(f"data[self.output_data_key].shape = {data[self.output_data_key].shape}")
@@ -661,3 +724,19 @@ class multiModalClass(ModelClass):
         #print(f"data[self.output_data_key] = {data[self.output_data_key]}")
         #exit(0)
         return ([data[data_key].to(self.device) for data_key in self.input_data_keys], data[self.output_data_key][:, : self.size_of_output].to(self.device))
+    
+
+    def transfer_model(self, path_to_load_model):
+
+        old_model = torch.load(path_to_load_model, map_location=self.device)
+        old_model.to(self.device)
+
+
+        # Extract the state dict from the loaded model
+        pretrained_dict = old_model.state_dict()
+
+        # Copy weights except for `fc`
+        new_model_dict = self.model.state_dict()
+        pretrained_dict = {k: v for k, v in pretrained_dict.items() if "fc" not in k}#k != 'fc.weight' and k != 'fc.bias'}
+        new_model_dict.update(pretrained_dict)
+        self.model.load_state_dict(new_model_dict)
