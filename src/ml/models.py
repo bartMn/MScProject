@@ -166,6 +166,7 @@ class multimodalMoldel(torch.nn.Module):
         
         self.num_of_resnets = num_of_resnets
         self.linear_inputs_sizes = linear_inputs_sizes
+        self.sum_of_linear_inputs_sizes = sum(linear_inputs_sizes)
 
         if kwargs["useResnet"]:
             self.cnn_encoding_size = 512
@@ -186,12 +187,17 @@ class multimodalMoldel(torch.nn.Module):
             
             self.resnets_list.append(resnet)
         
-        
+        if self.sum_of_linear_inputs_sizes:
+            self.mlp = customFullyConnectedLayer(size_of_input = sum(linear_inputs_sizes), size_of_output = 32)
+            input_extensions = 32
+        else:
+            input_extensions = 0
+
         # Define a new fully connected layer
         if kwargs["generateImage"]:
-            self.fc = CNNToImage(size_of_input = self.cnn_encoding_size * self.num_of_resnets + sum(linear_inputs_sizes), do_segmentation= kwargs["do_segmentation"])
+            self.fc = CNNToImage(size_of_input = self.cnn_encoding_size * self.num_of_resnets + input_extensions, do_segmentation= kwargs["do_segmentation"])
         else:
-            self.fc = customFullyConnectedLayer(size_of_input = self.cnn_encoding_size * self.num_of_resnets + sum(linear_inputs_sizes), size_of_output = size_of_output)
+            self.fc = customFullyConnectedLayer(size_of_input = self.cnn_encoding_size * self.num_of_resnets + input_extensions, size_of_output = size_of_output)
         
 
     def forward(self, x):
@@ -199,9 +205,14 @@ class multimodalMoldel(torch.nn.Module):
         out_combined = list()
         out_combined = [self.resnets_list[i](x[i]) for i in range(self.num_of_resnets)]
         
-        for i in range(len(self.linear_inputs_sizes)):
-            out_combined.append(x[i+self.num_of_resnets])
+        joint_list = list()
 
+        if self.sum_of_linear_inputs_sizes:
+            for i in range(len(self.linear_inputs_sizes)):
+                joint_list.append(x[i+self.num_of_resnets])
+
+            joint_list_tensor = torch.cat(joint_list, dim=1)
+            out_combined.append(self.mlp(joint_list_tensor))
         # Concatenate the outputs
         combined = torch.cat(out_combined, dim=1)
         # Pass through the fully connected layer
@@ -265,7 +276,8 @@ class sequentialModel(torch.nn.Module):
         else:
             self.fc = customFullyConnectedLayer(size_of_input = self.lstm_franka_hidden_size + self.num_of_resnets * self.lstm_camera_hidden_size, size_of_output = size_of_output)
         
-         
+
+
     def forward(self, x):
         # Pass through the two ResNet18 models
         
@@ -432,7 +444,7 @@ class CNNToImage(torch.nn.Module):
 
                 
         ngf = 64
-        nc = 3
+        nc = self.output_channels
         nz = input_vector_size
 
         self.conv1 = torch.nn.ConvTranspose2d(nz, ngf * 8, 4, 1, 0, bias=False)
