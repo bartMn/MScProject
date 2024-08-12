@@ -118,12 +118,14 @@ class singleSampleDataset(Dataset):
 
   
 class sequentialSampleDataset(Dataset):
-    def __init__(self, data_dict_dir, transform=None, transform_output_imgs = None, sequence_length=3, output_data_key = "boxes_pos0", used_keys = None, one_hot_for_segmentation = False):
+    def __init__(self, data_dict_dir, transform=None, transform_output_imgs = None, sequence_length=3, output_data_key = "boxes_pos0", used_keys = None, one_hot_for_segmentation = False, future_sample_num = 10):
         self.transform = transform
         self.transform_output_imgs = transform_output_imgs
         self.output_data_key = output_data_key
         self.sequence_length = sequence_length
         self.env_boundaries = list()
+
+        self.future_sample_num = future_sample_num
 
         self.output_data_key = output_data_key
         self.one_hot_for_segmentation = one_hot_for_segmentation
@@ -136,7 +138,7 @@ class sequentialSampleDataset(Dataset):
         self.data = dict()
         for key in data_dict_dir:
             if key not in used_keys:
-                    continue
+                continue
             self.data[key] = []
 
         for env_num in self.env_dirs:
@@ -181,6 +183,8 @@ class sequentialSampleDataset(Dataset):
 
     def __getitem__(self, idx):
         
+        epsilon=1e-8
+
         for start, end in self.env_boundaries:
             env_length = end - start + 1 - self.sequence_length + 1
             if idx < env_length:
@@ -207,15 +211,57 @@ class sequentialSampleDataset(Dataset):
                         img = self.transform(img)
                     images.append(img)
                 mulitisensory_sample[dict_key] = torch.stack(images)
+
             else:
-                rows = []
+                min_val, max_val = self.csv_min_max[dict_key]
+                # Read CSV row
+                min_val = np.array(min_val, dtype=np.float32)
+                max_val = np.array(max_val, dtype=np.float32)
+                denominator = max_val - min_val
+                denominator = np.where(denominator == 0, epsilon, denominator)
+
+
+                rows = np.empty((self.sequence_length, *np.array(self.data[dict_key][0]).shape), dtype=np.float32)
+
                 for i in range(self.sequence_length):
                     row = self.data[dict_key][idx + i]
-                    rows.append(row)
+                    row = np.array(row, dtype=np.float32)
+                    row = (row - min_val) / denominator
+                    rows[i] = row
                 mulitisensory_sample[dict_key] = torch.tensor(rows, dtype=torch.float)
-        
 
-        mulitisensory_sample[self.output_data_key] = mulitisensory_sample[self.output_data_key][-1]
+        
+        ########################
+        if "cam" in self.output_data_key:
+            mulitisensory_sample[self.output_data_key] = Image.open(self.data[dict_key][idx + self.sequence_length - 1 + self.future_sample_num]).convert('RGB')
+            
+            
+            if "seg" in dict_key and self.one_hot_for_segmentation:
+                mulitisensory_sample[self.output_data_key] = rgb_to_class_index(mulitisensory_sample[self.output_data_key])
+                mulitisensory_sample[self.output_data_key] = class_index_to_one_hot(mulitisensory_sample[self.output_data_key])
+               
+            if self.transform_output_imgs:
+                mulitisensory_sample[self.output_data_key] = self.transform_output_imgs(mulitisensory_sample[self.output_data_key])
+            elif self.transform:
+                mulitisensory_sample[self.output_data_key] = self.transform(mulitisensory_sample[self.output_data_key])
+                    
+        else:
+            
+            min_val, max_val = self.csv_min_max[self.output_data_key]
+            # Read CSV row
+            min_val = np.array(min_val, dtype=np.float32)
+            max_val = np.array(max_val, dtype=np.float32)
+            denominator = max_val - min_val
+            denominator = np.where(denominator == 0, epsilon, denominator)
+                
+            read_data = self.data[self.output_data_key][idx + self.sequence_length -1 + self.future_sample_num]
+            read_data = np.array(read_data, dtype=np.float32)
+            read_data = (read_data - min_val) / denominator
+            # Convert CSV row to tensor
+            mulitisensory_sample[self.output_data_key] = torch.tensor(read_data, dtype=torch.float)
+        ########################
+
+        #mulitisensory_sample[self.output_data_key] = mulitisensory_sample[self.output_data_key][-1]
 
         return mulitisensory_sample
 
@@ -299,6 +345,31 @@ def test_single_samples():
 
 
 
+def one_hot_to_rgb(one_hot_tensor):
+    # The color mapping from class index to RGB values
+    colors = [(25, 255, 140),
+              (255, 255, 25),
+              (25, 25, 255),
+              (0, 0, 0),
+              (140, 25, 140)
+            ]
+    
+    # Get the height and width from the one-hot tensor
+    num_classes, height, width = one_hot_tensor.shape
+    
+    # Create an empty RGB image
+    rgb_image = np.zeros((height, width, 3), dtype=np.uint8)
+    
+    # Convert one-hot tensor back to class indices
+    class_indices = torch.argmax(one_hot_tensor, dim=0).numpy()
+    
+    # Map class indices back to RGB colors
+    for class_index, color in enumerate(colors):
+        mask = (class_indices == class_index)
+        rgb_image[mask] = color
+    
+    return rgb_image
+
 def test_sequential_samples():
     NUM_OF_CAMERAS = 5
     camera_types = ["depth", "rgb", "segmented"]
@@ -355,11 +426,11 @@ def test_sequential_samples():
 
 def rgb_to_class_index(rgb_image):
 
-    colors = [(0, 0, 0),  # Background
-              (25, 255, 255),  # Class 1
-              (140, 25, 140),  # Class 2
-              (140, 255, 25),  # Class 3
-              (255, 25, 25)
+    colors = [(25, 255, 140),
+              (255, 255, 25),
+              (25, 25, 255),
+              (0, 0, 0),
+              (140, 25, 140)
             ]
     color_map = {tuple(color): idx for idx, color in enumerate(colors)}
  
