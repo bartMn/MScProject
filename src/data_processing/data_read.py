@@ -186,7 +186,7 @@ class sequentialSampleDataset(Dataset):
         epsilon=1e-8
 
         for start, end in self.env_boundaries:
-            env_length = end - start + 1 - self.sequence_length + 1
+            env_length = end - start + 1 - (self.sequence_length + self.future_sample_num) + 1
             if idx < env_length:
                 idx = start + idx
                 break
@@ -233,7 +233,7 @@ class sequentialSampleDataset(Dataset):
         
         ########################
         if "cam" in self.output_data_key:
-            mulitisensory_sample[self.output_data_key] = Image.open(self.data[dict_key][idx + self.sequence_length - 1 + self.future_sample_num]).convert('RGB')
+            mulitisensory_sample[self.output_data_key] = Image.open(self.data[self.output_data_key][idx + self.sequence_length - 1 + self.future_sample_num]).convert('RGB')
             
             
             if "seg" in dict_key and self.one_hot_for_segmentation:
