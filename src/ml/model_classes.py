@@ -98,7 +98,7 @@ class ModelClass():
         for cam_num in range(NUM_OF_CAMERAS):
             for camera_type in camera_types:
                 data_dict_dir[f"cam{cam_num}_{camera_type}"] = f"{data_root}{os.sep}cameras{os.sep}{camera_type}{os.sep}cam{cam_num}"
-
+        data_dict_dir["cam0_rgb_out"] = data_dict_dir["cam0_rgb"]
         #transform = transforms.Compose([
         #    transforms.Resize((224, 224)),
         #    transforms.ToTensor()
@@ -137,12 +137,8 @@ class ModelClass():
         
         torch.manual_seed(0) #added maual seed to make sure the random split is the same every time
 
-        self.used_keys = input_data_keys
-        if self.output_data_key not in input_data_keys:
-            self.used_keys += [self.output_data_key] 
-        else: 
-            self.output_data_key += "_out"
-
+        self.used_keys = input_data_keys + [self.output_data_key]
+        
         if self.sequential_data:
             self.sequence_length = sequence_length
             full_training_set = sequentialSampleDataset(data_dict_dir,
