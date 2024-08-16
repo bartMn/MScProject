@@ -121,13 +121,17 @@ class sequentialSampleDataset(Dataset):
     def __init__(self, data_dict_dir, transform=None, transform_output_imgs = None, sequence_length=3, output_data_key = "boxes_pos0", used_keys = None, one_hot_for_segmentation = False, future_sample_num = 10):
         self.transform = transform
         self.transform_output_imgs = transform_output_imgs
-        self.output_data_key = output_data_key
         self.sequence_length = sequence_length
         self.env_boundaries = list()
 
         self.future_sample_num = future_sample_num
 
         self.output_data_key = output_data_key
+        if "_out" in output_data_key:    
+            self.output_data_key_original = output_data_key.replace("_out", "")
+        else:
+            self.output_data_key_original = output_data_key
+        
         self.one_hot_for_segmentation = one_hot_for_segmentation
 
         self.used_keys = used_keys
@@ -233,10 +237,10 @@ class sequentialSampleDataset(Dataset):
         
         ########################
         if "cam" in self.output_data_key:
-            mulitisensory_sample[self.output_data_key] = Image.open(self.data[self.output_data_key][idx + self.sequence_length - 1 + self.future_sample_num]).convert('RGB')
+            mulitisensory_sample[self.output_data_key] = Image.open(self.data[self.output_data_key_original][idx + self.sequence_length - 1 + self.future_sample_num]).convert('RGB')
             
             
-            if "seg" in dict_key and self.one_hot_for_segmentation:
+            if "seg" in self.output_data_key and self.one_hot_for_segmentation:
                 mulitisensory_sample[self.output_data_key] = rgb_to_class_index(mulitisensory_sample[self.output_data_key])
                 mulitisensory_sample[self.output_data_key] = class_index_to_one_hot(mulitisensory_sample[self.output_data_key])
                
