@@ -81,7 +81,7 @@ class ModelClass():
               
 
         NUM_OF_CAMERAS = 5
-        camera_types = ["depth", "rgb", "segmented", "flow"]
+        camera_types = ["depth", "rgb", "segmented", "flow", "flow_no_robot"]
         data_root = os.path.dirname(os.path.abspath(__file__))
         data_root = os.path.join(data_root, "..", "..", "..", "recorded_data_isaac_lab")
         
@@ -137,8 +137,12 @@ class ModelClass():
         
         torch.manual_seed(0) #added maual seed to make sure the random split is the same every time
 
-        self.used_keys = input_data_keys + [self.output_data_key]
-        
+        self.used_keys = input_data_keys
+        if self.output_data_key not in input_data_keys:
+            self.used_keys += [self.output_data_key] 
+        else: 
+            self.output_data_key += "_out"
+
         if self.sequential_data:
             self.sequence_length = sequence_length
             full_training_set = sequentialSampleDataset(data_dict_dir,
@@ -320,7 +324,8 @@ class ModelClass():
 
     def test_model(self,
                    model: torch.nn.Module = None,
-                   use_test_set:bool = False):
+                   use_test_set:bool = False,
+                   predictions_dir:str = None):
                  
 
         if model is None:
@@ -413,6 +418,9 @@ class ModelClass():
             test_loader = DataLoader(test_set, batch_size=64, shuffle=False, num_workers=3)
 
 
+        if "cam" in self.output_data_key and predictions_dir and not os.path.exists(predictions_dir):
+            os.mkdir(predictions_dir)
+
 
         model.train(False)
         epoch_vloss = 0.0
@@ -436,7 +444,7 @@ class ModelClass():
 
                 if "cam" in self.output_data_key:
                     for i in range(loop_range):
-                        show_img(voutputs, vlabels, i, frame_counter, one_hot_for_segmentation)
+                        show_img(voutputs, vlabels, i, frame_counter, one_hot_for_segmentation, predictions_dir)
                         frame_counter += 1
 
                 if "cam" not in self.output_data_key:
@@ -449,9 +457,11 @@ class ModelClass():
         avg_vloss = epoch_vloss / (i + 1)
         avg_vloss_n_original_scale = epoch_vloss_in_original_scale / (i + 1)
         print(f'LOSS test: {avg_vloss}, loss (in m): {avg_vloss_n_original_scale}')
+
+        return avg_vloss
         
 
-def show_img(voutputs, vlabels, idx, frame_counter, one_hot_for_segmentation):
+def show_img(voutputs, vlabels, idx, frame_counter, one_hot_for_segmentation, predictions_dir):
 
     # Convert the first tensor to a NumPy array and then to a PIL image
     if one_hot_for_segmentation:
@@ -492,7 +502,10 @@ def show_img(voutputs, vlabels, idx, frame_counter, one_hot_for_segmentation):
 
     # Display the combined image
     #combined_image.show()
-    filename = f"/home/bart/project/test_set/predictions/flow_predicitons{os.sep}flow_comparison{frame_counter}.png"
+    if predictions_dir:
+        filename = predictions_dir +os.sep+ f"{frame_counter}.png"
+    else:
+        filename = f"/home/bart/project/test_set/predictions/flow_predicitons{os.sep}flow_comparison{frame_counter}.png"
     combined_image.save(filename)
 
 def one_hot_to_rgb_batch(one_hot_tensor):
