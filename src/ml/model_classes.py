@@ -18,7 +18,7 @@ module_path = os.path.dirname(os.path.abspath(__file__))
 module_path = os.path.join(module_path, f"..")
 if module_path not in sys.path:
     sys.path.append(module_path)
-from data_processing.data_read import singleSampleDataset, sequentialSampleDataset,  test_single_samples
+from data_processing.data_read import singleSampleDataset, sequentialSampleDataset
 from ml.models import *
 
 torch.backends.cudnn.enabled = False
