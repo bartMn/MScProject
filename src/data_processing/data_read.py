@@ -176,7 +176,7 @@ class sequentialSampleDataset(Dataset):
     def __len__(self):
         total_length = 0
         for start, end in self.env_boundaries:
-            total_length += max(0, end - start + 1 - self.sequence_length + 1)
+            total_length += max(0, end - start + 1 - (self.sequence_length + self.future_sample_num) + 1)
         return total_length
 
 
