@@ -98,7 +98,12 @@ class ModelClass():
         for cam_num in range(NUM_OF_CAMERAS):
             for camera_type in camera_types:
                 data_dict_dir[f"cam{cam_num}_{camera_type}"] = f"{data_root}{os.sep}cameras{os.sep}{camera_type}{os.sep}cam{cam_num}"
-        data_dict_dir["cam0_rgb_out"] = data_dict_dir["cam0_rgb"]
+        
+        if self.output_data_key in input_data_keys:
+            new_key = self.output_data_key + "_out"
+            data_dict_dir[new_key] = data_dict_dir[self.output_data_key]
+            self.output_data_key = new_key
+            #print(f"data_dict_dir = {data_dict_dir}")
         #transform = transforms.Compose([
         #    transforms.Resize((224, 224)),
         #    transforms.ToTensor()
@@ -334,7 +339,7 @@ class ModelClass():
 
             ###################################################################################################
             NUM_OF_CAMERAS = 5
-            camera_types = ["depth", "rgb", "segmented", "flow"]
+            camera_types = ["depth", "rgb", "segmented", "flow", "flow_no_robot"]
             data_root = "/home/bart/project/test_set"
 
             data_dict_dir = dict()
@@ -350,7 +355,16 @@ class ModelClass():
             for cam_num in range(NUM_OF_CAMERAS):
                 for camera_type in camera_types:
                     data_dict_dir[f"cam{cam_num}_{camera_type}"] = f"{data_root}{os.sep}cameras{os.sep}{camera_type}{os.sep}cam{cam_num}"
-
+            
+            self.output_data_key = self.output_data_key.replace("_out", "")
+            print(f"self.output_data_key = {self.output_data_key}")
+            if self.output_data_key in self.input_data_keys:
+                new_key = self.output_data_key + "_out"
+                data_dict_dir[new_key] = data_dict_dir[self.output_data_key]
+                self.output_data_key = new_key
+                print(f"data_dict_dir = {data_dict_dir}")
+            
+            self.used_keys = self.input_data_keys + [self.output_data_key]
             #transform = transforms.Compose([
             #    transforms.Resize((224, 224)),
             #    transforms.ToTensor()
@@ -411,10 +425,10 @@ class ModelClass():
             #val_size = len(full_training_set) - train_size
             #training_set, validation_set = random_split(full_training_set, [train_size, val_size])
 
-            test_loader = DataLoader(test_set, batch_size=64, shuffle=False, num_workers=3)
+            test_loader = DataLoader(test_set, batch_size=16, shuffle=False, num_workers=10)
 
 
-        if "cam" in self.output_data_key and predictions_dir and not os.path.exists(predictions_dir):
+        if predictions_dir and not os.path.exists(predictions_dir):
             os.mkdir(predictions_dir)
 
 
@@ -423,6 +437,12 @@ class ModelClass():
         epoch_vloss_in_original_scale = 0.0
         
         frame_counter = 0
+        label_box_pos_orig_scale_list = list()
+        predictions_box_pos_orig_scale_list = list()
+
+        label_box_pos_list = list()
+        predictions_box_pos_list = list()
+
         with torch.no_grad():
             for i, vdata in enumerate(test_loader):
                 vinputs, vlabels = self.get_inputs_and_labels(vdata)
@@ -439,14 +459,24 @@ class ModelClass():
                     loop_range = vlabels.shape[0]
 
                 if "cam" in self.output_data_key:
+                    vloss_in_original_scale = 0
                     for i in range(loop_range):
                         show_img(voutputs, vlabels, i, frame_counter, one_hot_for_segmentation, predictions_dir)
                         frame_counter += 1
+                        
 
-                if "cam" not in self.output_data_key:
-                    vloss_in_original_scale = self.loss_fn(self.denormalize(voutputs, self.output_data_key), self.denormalize(vlabels, self.output_data_key))
                 else:
-                    vloss_in_original_scale = 0
+                    vloss_in_original_scale = self.loss_fn(self.denormalize(voutputs, self.output_data_key), self.denormalize(vlabels, self.output_data_key))
+
+                    out_orig_scale = self.denormalize(voutputs, self.output_data_key)
+                    labes_orig_scale = self.denormalize(vlabels, self.output_data_key)
+                    label_box_pos_orig_scale_list.append(labes_orig_scale)
+                    predictions_box_pos_orig_scale_list.append(out_orig_scale)
+
+                    label_box_pos_list.append(vlabels)
+                    predictions_box_pos_list.append(voutputs)
+
+
                 epoch_vloss_in_original_scale += vloss_in_original_scale
 
                     
@@ -454,6 +484,27 @@ class ModelClass():
         avg_vloss_n_original_scale = epoch_vloss_in_original_scale / (i + 1)
         print(f'LOSS test: {avg_vloss}, loss (in m): {avg_vloss_n_original_scale}')
 
+        if "cam" not in self.output_data_key:
+            label_tensor_orig_scale = torch.cat(label_box_pos_orig_scale_list, dim=0)
+            out_tensor_orig_scale = torch.cat(predictions_box_pos_orig_scale_list, dim=0)
+
+            final_tensor_orig_scale = torch.cat([label_tensor_orig_scale, out_tensor_orig_scale], dim=1)
+            final_tensor_orig_scale = final_tensor_orig_scale.cpu()
+            final_array_orig_scale = final_tensor_orig_scale.numpy()
+
+            np.savetxt(predictions_dir +os.sep+ "output_orig_scale.csv", final_array_orig_scale, delimiter=",")
+
+
+            label_tensor = torch.cat(label_box_pos_list, dim=0)
+            out_tensor = torch.cat(predictions_box_pos_list, dim=0)
+
+            final_tensor = torch.cat([label_tensor, out_tensor], dim=1)
+            final_tensor = final_tensor.cpu()
+            final_array = final_tensor.numpy()
+
+            np.savetxt(predictions_dir +os.sep+ "output.csv", final_array, delimiter=",")
+
+            
         return avg_vloss
         
 
@@ -746,6 +797,20 @@ class multiModalClass(ModelClass):
 
         # Copy weights except for `fc`
         new_model_dict = self.model.state_dict()
-        pretrained_dict = {k: v for k, v in pretrained_dict.items() if "fc" not in k}#k != 'fc.weight' and k != 'fc.bias'}
+        pretrained_dict = {k: v for k, v in pretrained_dict.items() if "fc" not in k}
         new_model_dict.update(pretrained_dict)
         self.model.load_state_dict(new_model_dict)
+
+    
+    def freeze_encoders(self):
+         # Freeze all layers except the last fully connected layer (`fc`)
+        for name, param in self.model.named_parameters():
+            if "fc" not in name:
+                param.requires_grad = False
+
+    def unfreeze_encoders(self):
+         # Freeze all layers except the last fully connected layer (`fc`)
+        for name, param in self.model.named_parameters():
+            #if "fc" not in name:
+            #    param.requires_grad = True
+            param.requires_grad = True
