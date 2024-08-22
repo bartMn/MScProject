@@ -44,10 +44,10 @@ from supp import SupportClass
 from configclass import FrankaPushEnvCfg
 
 
-TEST_AND_SAVE_SENSORS = False
-ERASE_EXISTING_DATA = False
-GATHERED_DATA_ROOT = "/home/bart/project/recorded_data_isaac_lab"
-MAX_FRAMES_TO_SAVE = 350
+TEST_AND_SAVE_SENSORS =  os.getenv('TEST_AND_SAVE_SENSORS', 'false').lower() == 'true'
+ERASE_EXISTING_DATA =  os.getenv('ERASE_EXISTING_DATA', 'false').lower() == 'true'
+GATHERED_DATA_ROOT = os.getenv('RECORDED_DATA_DIR')
+MAX_FRAMES_TO_SAVE = 210
 SIM_FRAME_TO_START_RECORDING = 8
 
 
@@ -83,7 +83,7 @@ class FrankaPushEnv(DirectRLEnv):
 
             return torch.tensor([px, py, pz, qw, qx, qy, qz], device=device)
 
-
+        self.colorize_semantic_segmentation = self.cfg.colorize_semantic_segmentation
         self.camera_modes = self.cfg.camera_modes
         self.cam_sensor_width = self.cfg.cam_sensor_width
         self.cam_sensor_height = self.cfg.cam_sensor_height
@@ -321,7 +321,10 @@ class FrankaPushEnv(DirectRLEnv):
         
         #print(f"self._cubeA.data.body_pos_w.shape = {self._cubeA.data.body_pos_w.shape}")
         #print(f"(self._robot.data.body_pos_w[:, self.handles['grip_site'], :]).shape = {(self._robot.data.body_pos_w[:, self.handles['grip_site'], :]).shape}")
-        eef_pos = self._robot.data.body_pos_w[:, self.handles["grip_site"], :]
+        #eef_pos = self._robot.data.body_pos_w[:, self.handles["hand"], :]
+        #eef_quat = self._robot.data.body_quat_w[:, self.handles["hand"], :]
+        local_points = torch.tensor([[0, 0, 0.105] for _ in range(self.num_envs)], device = self.device)
+        eef_pos = self.transform_points(self._robot.data.body_pos_w[:, self.handles["hand"], :], self._robot.data.body_quat_w[:, self.handles["hand"], :], local_points)
         #print(f"(torch.ones_like(eff_pos[:, 0]) * self.cubeA_size).shape = {(torch.ones_like(eff_pos[:, 0]) * self.cubeA_size).shape}")
         #exit(0)
         states = dict()
@@ -340,7 +343,7 @@ class FrankaPushEnv(DirectRLEnv):
         states["fingers_dist"] = (robot_left_finger_pos - robot_right_finger_pos)
         states["fingers_dist"] = torch.norm(states["fingers_dist"], dim=1, keepdim=True)
 
-        states["cubeA_to_cubeB_pos_orig"] = self.original_dist_cubes.squeeze()
+        #states["cubeA_to_cubeB_pos_orig"] = self.original_dist_cubes.squeeze()
         #print(f"(states['fingers_dist']).shape = {(states['fingers_dist']).shape}")
         #exit(0)
 
@@ -354,24 +357,28 @@ class FrankaPushEnv(DirectRLEnv):
     def _reset_idx(self, env_ids: torch.Tensor | None):
         super()._reset_idx(env_ids)
         # robot state
+        self.set_seed_based_on_time()
+        self._robot.data.default_joint_pos *= 0
+        self._robot.data.default_joint_pos += torch.tensor([0.0, -0.18, 0.0, -2.0, 0.0, 2.9416, 0.7854, 0.035, 0.035], device=self.device)
+
         joint_pos = self._robot.data.default_joint_pos[env_ids] + sample_uniform(
-            -0.125*3,
-            0.125*3,
+            -0.125,
+            0.125,
             (len(env_ids), self._robot.num_joints),
             self.device,
         )
 
-        base_rot = sample_uniform(
-            0.25,
-            0.75,
-            (len(env_ids)),
-            self.device,
-        )
+        #base_rot = sample_uniform(
+        #    0.25,
+        #    0.75,
+        #    (len(env_ids)),
+        #    self.device,
+        #)
 
-        self.set_seed_based_on_time()
-        base_idx = 0
+        
+        #base_idx = 0
 
-        joint_pos[: , base_idx] += self.robot_dof_lower_limits[base_idx] + base_rot* (self.robot_dof_upper_limits[base_idx] - self.robot_dof_lower_limits[base_idx])
+        #joint_pos[: , base_idx] += self.robot_dof_lower_limits[base_idx] + base_rot* (self.robot_dof_upper_limits[base_idx] - self.robot_dof_lower_limits[base_idx])
         #joint_pos = 0*self._robot.data.default_joint_pos[env_ids] + \
         #            sample_uniform(0.0, 1.0, (len(env_ids), self._robot.num_joints), self.device)
 #
@@ -414,8 +421,8 @@ class FrankaPushEnv(DirectRLEnv):
         self.cubeA_init_pos = cubeA_tensor[:, :3].clone()
         self.cubeB_init_pos = cubeB_tensor[:, :3].clone()
 
-        original_directions_cubes = ((self.cubeB_init_pos - self.cubeA_init_pos).reshape(self.num_envs, 3))
-        self.original_dist_cubes = torch.norm(original_directions_cubes, dim= -1).view(-1, 1) 
+        #original_directions_cubes = ((self.cubeB_init_pos - self.cubeA_init_pos).reshape(self.num_envs, 3))
+        #self.original_dist_cubes = torch.norm(original_directions_cubes, dim= -1).view(-1, 1) 
 
         cubeA_tensor[:, :3] += self.scene.env_origins
         cubeB_tensor[:, :3] += self.scene.env_origins
@@ -466,13 +473,13 @@ class FrankaPushEnv(DirectRLEnv):
         # Get correct references depending on which one was selected
         if cube_name.lower() == 'a':
             check_valid= False
-            x_min = 0.30
-            x_max = 0.50
+            x_min = 0.45
+            x_max = 0.75
             #this_cube_state_all = self._init_cubeA_state
             #other_cube_state = self._init_cubeB_state[env_ids, :]
         elif cube_name.lower() == 'b':
-            x_min = 0.65
-            x_max = 0.90
+            x_min = 0.45
+            x_max = 0.75
         
             check_valid= True
             #this_cube_state_all = self._init_cubeB_state
@@ -525,32 +532,34 @@ class FrankaPushEnv(DirectRLEnv):
     def _get_observations(self) -> dict:
         
         #abs_dist_cubes = ((self._cubeB.data.body_pos_w - self._cubeA.data.body_pos_w).reshape(self.num_envs, 3)).abs()
-        directions_cubes = ((self._cubeB.data.body_pos_w - self._cubeA.data.body_pos_w).reshape(self.num_envs, 3))
-        dist_cubes =  torch.norm(directions_cubes, dim= -1).view(-1, 1) 
+        dist_cubes = ((self._cubeB.data.body_pos_w - self._cubeA.data.body_pos_w).reshape(self.num_envs, 3))
+        #directions_cubes = ((self._cubeB.data.body_pos_w - self._cubeA.data.body_pos_w).reshape(self.num_envs, 3))
+        #dist_cubes =  torch.norm(directions_cubes, dim= -1).view(-1, 1) 
         #print(f"directions_cubes.shape = {directions_cubes.shape}")
         #print(f"dist_cubes.shape = {dist_cubes.shape}")
         #print(f"norm_directions_cubes.shape = {norm_directions_cubes.shape}")
-        norm_directions_cubes = directions_cubes / dist_cubes
+        #norm_directions_cubes = directions_cubes / dist_cubes
         
 
         cubeA_pos = self._cubeA.data.root_pos_w - self.scene.env_origins
         cubeA_quat = self._cubeA.data.root_quat_w
-        cubeB_pos = self._cubeB.data.root_pos_w - self.scene.env_origins
+        #cubeB_pos = self._cubeB.data.root_pos_w - self.scene.env_origins
         #cubeB_quat = self._cubeB.data.root_quat_w
         franka_pos = self._robot.data.joint_pos
         franka_vel = self._robot.data.joint_vel
-        eef_pos = ((self._robot.data.body_pos_w[:, self.handles["leftfinger_tip"], :] + \
-                   self._robot.data.body_pos_w[:, self.handles["rightfinger_tip"], :]) \
-                   / 2) \
-                   - self.scene.env_origins
+        #eef_pos = ((self._robot.data.body_pos_w[:, self.handles["leftfinger_tip"], :] + \
+        #           self._robot.data.body_pos_w[:, self.handles["rightfinger_tip"], :]) \
+        #           / 2) \
+        #           - self.scene.env_origins
+        #eef_pos = self._robot.data.body_pos_w[:, self.handles["hand"], :] - self.scene.env_origins
 
         
         #eef_pos = self._robot.data.body_pos_w[:, self.handles["grip_site"], :] - self.scene.env_origins
         eef_quat = self._robot.data.body_quat_w[:, self.handles["hand"], :]
-        abs_dist_eefCubeA = (cubeA_pos - eef_pos).abs()
+        #abs_dist_eefCubeA = (cubeA_pos - eef_pos).abs()
 
-        local_points = torch.tensor([[0, 0, 0.05] for _ in range(self.num_envs)], device = self.device)
-        eef_pos = self.transform_points(eef_pos, eef_quat, local_points)
+        local_points = torch.tensor([[0, 0, 0.105] for _ in range(self.num_envs)], device = self.device)
+        eef_pos = self.transform_points(self._robot.data.body_pos_w[:, self.handles["hand"], :] - self.scene.env_origins, eef_quat, local_points)
         
         #print(f"to_target.shape = {to_target.shape}")
         #print(f"cubeA_pos.shape = {cubeA_pos.shape}")
@@ -562,19 +571,20 @@ class FrankaPushEnv(DirectRLEnv):
 
         obs = torch.cat(
             (
-                #abs_dist_cubes,
                 dist_cubes,
-                self.original_dist_cubes,
-                norm_directions_cubes,
+                #abs_dist_cubes,
+                #dist_cubes,
+                #self.original_dist_cubes,
+                #norm_directions_cubes,
                 cubeA_pos,
                 cubeA_quat,
-                cubeB_pos,
+                #cubeB_pos,
                 #cubeB_quat,
                 franka_pos,
                 franka_vel,
                 eef_pos,
                 eef_quat,
-                abs_dist_eefCubeA,
+                #abs_dist_eefCubeA,
             ),
             dim=-1,
         )
@@ -617,16 +627,15 @@ class FrankaPushEnv(DirectRLEnv):
 
         # Compute per-env physical parameters
         cubeA_size = states["cubeA_size"]
-        cubeB_size = states["cubeB_size"]
+        #cubeB_size = states["cubeB_size"]
 
         # Define threshold for EE being close to cube A
-        ee_close_threshold = 0.05  # You can adjust this threshold as needed
+        #ee_close_threshold = 0.05  # You can adjust this threshold as needed
 
         # Distance from cubeA to cubeB
         d_ab = torch.norm(states["cubeA_to_cubeB_pos"], dim=-1)
-        #move_reward = 1 - torch.tanh(10.0 * d_ab)
-
-        move_reward = 1 - (d_ab / states["cubeA_to_cubeB_pos_orig"])
+        move_reward = 1 - torch.tanh(10.0 * d_ab)
+        #move_reward = 1 - (d_ab / states["cubeA_to_cubeB_pos_orig"])
 
         #print(f"d_ab.shape = {d_ab.shape}")
         #print(f"states[cubeA_to_cubeB_pos_orig].shape = {states['cubeA_to_cubeB_pos_orig'].shape}")
@@ -634,13 +643,13 @@ class FrankaPushEnv(DirectRLEnv):
         #exit(0)
 
         # Distance from EE to cubeA
-        d_eef_to_cubeA = torch.norm(states["cubeA_pos"] - states["eef_pos"], dim=-1)
+        #d_eef_to_cubeA = torch.norm(states["cubeA_pos"] - states["eef_pos"], dim=-1)
 
         # Check if cubeA is near cubeB horizontally
-        cubeA_near_cubeB = (torch.norm(states["cubeA_to_cubeB_pos"][:, :2], dim=-1) < 0.07)
+        cubeA_near_cubeB = (torch.norm(states["cubeA_to_cubeB_pos"][:, :2], dim=-1) < 0.020)
 
         # Check if cubeA is on the ground using cubeB's height as a reference
-        cubeA_on_table = torch.abs(states["cubeA_pos"][:, 2] - states["cubeB_pos"][:, 2]) < 0.01
+        cubeA_on_table = torch.abs(states["cubeA_pos"][:, 2] - states["cubeB_pos"][:, 2]) < 0.05
         #cube_on_ground = torch.abs(states["cubeA_pos"][:, 2] + states["cubeB_pos"][:, 2]) < 1.5
         #fingers_apart = states["fingers_dist"] > 0.01
         #fingers_punishment = (fingers_apart * (states["fingers_dist"] * (-1000))).squeeze()
@@ -662,27 +671,27 @@ class FrankaPushEnv(DirectRLEnv):
         ee_target_reward = 1 - torch.tanh(10.0 * d_eef_to_target)
 
         # Check if EE is close to cube A
-        ee_close_to_cubeA = ee_target_reward > 0.2
+        ee_close_to_cubeA = ee_target_reward > 0.65
         #print(f"sum = {torch.sum(ee_close_to_cubeA)}; max = {torch.max(ee_target_reward)}")
         push_reward = cubeA_near_cubeB & cubeA_on_table
 
-        hand_higher_than_cube = (states["robot_hand_hight"] - states["cubeA_pos"][:, 2]) > 0.065
+        hand_higher_than_cube = (states["robot_hand_hight"] - states["cubeA_pos"][:, 2]) > 0.070
         #punishments = -10 * cube_on_ground
 
         #print(f"punishment = {punishments}")
         #exit(0)
 
         # Compose rewards
-        #rewards = torch.where(
-        #    push_reward,
-        #    reward_settings["r_push_scale"] * push_reward * ee_close_to_cubeA.to(torch.float),
-        #    reward_settings["r_align_scale"] * move_reward * ee_close_to_cubeA.to(torch.float) + reward_settings["r_align_scale"] * ee_target_reward
-        #)
-
-        rewards =(reward_settings["r_finished_scale"] * push_reward * ee_close_to_cubeA.to(torch.float) +
-                  reward_settings["r_push_scale"] * move_reward * ee_close_to_cubeA.to(torch.float) + 
-                  reward_settings["r_align_scale"] * ee_target_reward
+        rewards = torch.where(
+            push_reward,
+            reward_settings["r_finished_scale"] * push_reward * ee_close_to_cubeA.to(torch.float),
+            reward_settings["r_push_scale"] * move_reward * ee_close_to_cubeA.to(torch.float) + reward_settings["r_align_scale"] * ee_target_reward
         )
+
+        #rewards =(reward_settings["r_finished_scale"] * push_reward * ee_close_to_cubeA.to(torch.float) +
+        #          reward_settings["r_push_scale"] * move_reward * ee_close_to_cubeA.to(torch.float) + 
+        #          reward_settings["r_align_scale"] * ee_target_reward
+        #)
 
 
         #print(f"rewards.shape = {rewards.shape}")
@@ -690,7 +699,7 @@ class FrankaPushEnv(DirectRLEnv):
         #print(f"fingers_punishment.shape = {fingers_punishment.shape}")
         #exit(0)
 
-        return (rewards * fingers_together.squeeze() * hand_higher_than_cube * cubes_on_table) # + punishments #+ fingers_punishment
+        return (rewards * fingers_together.squeeze() * cubes_on_table* hand_higher_than_cube) # + punishments #+ fingers_punishment
 
     def quaternion_to_rotation_matrix(self, quats):
         """
@@ -765,6 +774,7 @@ class FrankaPushEnv(DirectRLEnv):
         return global_franka_rot, global_franka_pos#, global_drawer_rot, global_drawer_pos
 
     def set_seed_based_on_time(self):
+        
         # Get the current time in seconds since the epoch
         seed = int(time.time())
 
@@ -782,9 +792,9 @@ class FrankaPushEnv(DirectRLEnv):
             torch.cuda.manual_seed(seed)
             torch.cuda.manual_seed_all(seed)
 
-        # Ensure deterministic behavior for some operations
-        torch.backends.cudnn.deterministic = True
-        torch.backends.cudnn.benchmark = False
+        ## Ensure deterministic behavior for some operations
+        #torch.backends.cudnn.deterministic = True
+        #torch.backends.cudnn.benchmark = False
 
 
     def save_data(self):
@@ -799,7 +809,7 @@ class FrankaPushEnv(DirectRLEnv):
         #print(f"info = {self.CAMERA_LIST[0].data.info}")
         #exit()
         #cam_data = self.tiled_camera.data.output[self.cam_data_type]
-        self.sensors.save_rendered_imgs(cameras_data_list, self.current_frame)
+        self.sensors.save_rendered_imgs(cameras_data_list, self.current_frame, self.colorize_semantic_segmentation)
         self.sensors.save_dof_states_and_forces(self._robot.data.computed_torque,
                                                     self._robot.data.joint_pos,
                                                     self._robot.data.joint_vel)
