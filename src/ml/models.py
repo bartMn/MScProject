@@ -4,20 +4,9 @@ import torch.nn.functional as F
 
 
 class customFullyConnectedLayer(torch.nn.Module):
-    """
-    This class is used to create a fully conected
-    suited for the problem of classifiation a ball into one of 15 classes 
-    """
     
     def __init__(self, neueons_in_hidden_layer: int = 50, dropout:float = 0.4, size_of_input = 512, size_of_output = 1):
-        """
-        Initializes the fully connected layer.
-
-        Args:
-            neurons_in_hidden_layer (int, optional): The number of neurons in the hidden layer. Defaults to 50.
-            dropout (float, optional): The dropout rate for regularization in the hidden layer. Defaults to 0.4.
-        """
-        
+       
         super(customFullyConnectedLayer, self).__init__()
         
         neurons_in = size_of_input #number of outpus from the resnet18 to the fully connected layer
@@ -33,15 +22,7 @@ class customFullyConnectedLayer(torch.nn.Module):
         #self.softmax_out = torch.nn.Softmax(dim=1)
         
     def forward(self, x):
-        """
-        Defines the forward pass of the fully connected layer.
-
-        Args:
-            x (torch.Tensor): The input tensor.
-
-        Returns:
-            torch.Tensor: The output tensor after passing through the fully connected layer.
-        """
+        
         
         x = self.lin1(x)
         x = self.relu(x)
@@ -57,19 +38,9 @@ class customFullyConnectedLayer(torch.nn.Module):
     
 
 class customCNN(torch.nn.Module):
-    """
-    This class is used to create a fully conected
-    suited for the problem of classifiation a ball into one of 15 classes 
-    """
     
-    def __init__(self):
-        """
-        Initializes the fully connected layer.
 
-        Args:
-            neurons_in_hidden_layer (int, optional): The number of neurons in the hidden layer. Defaults to 50.
-            dropout (float, optional): The dropout rate for regularization in the hidden layer. Defaults to 0.4.
-        """
+    def __init__(self):
         
         super(customCNN, self).__init__()
         

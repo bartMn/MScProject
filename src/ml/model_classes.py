@@ -27,9 +27,7 @@ torch.backends.cudnn.enabled = False
 
     
 class ModelClass():
-    """
-    This class is used to create, train and evaluate a resnet18 model
-    """
+    
 
     def __init__(self,
                  data_path:str= None,
@@ -43,20 +41,8 @@ class ModelClass():
                  sequential_data:bool = False,
                  sequence_length:int = 2,
                  **kwargs) -> None:
-        """
-        Initialize the ResNet model for image classification.
+      
 
-        Args:
-            data_path (str, optional): The path to the data directory. Defaults to None.
-            train_val_split (float, optional): Ratio of the size of training set to the sum of sizes of training and validation sets. Defaults to 0.9.
-            batch_size (int, optional): The batch size. Defaults to 20.
-            epochs_num (int, optional): The number of epochs for training. Defaults to 20.
-            neueons_in_hidden_layer (int, optional): The number of neurons in the hidden layer of the custom fully connected layer. Defaults to 50.
-            learning_rate (float, optional): The learning rate. Defaults to 0.1.
-            dropout (float, optional): The dropout rate for regularization. Defaults to 0.4.
-            save_path (str, optional): The path to save the trained model. Defaults to None.
-            path_to_load_model (str, optional): The path to the pre-trained model to load. Defaults to None.
-        """
         self.kwargs = kwargs
         self.output_data_key = output_data_key if output_data_key else "boxes_pos0"
         if "seg" in self.output_data_key:
@@ -206,15 +192,8 @@ class ModelClass():
 
 
     def train_epoch(self, epoch_index: int) -> float:
-        """
-        Performs training for one epoch.
-    
-        Args:
-            epoch_index (int): The index of the current epoch.
-    
-        Returns:
-            float: The average loss value for the epoch.
-        """
+       
+       
         running_loss = 0.0
 
         for i, data in tqdm(enumerate(self.training_loader), total=len(self.training_loader)):
@@ -255,19 +234,7 @@ class ModelClass():
 
 
     def train_model(self, epochs: int = None, save_pt_model:bool = False) -> Tuple[np.ndarray, np.ndarray]:
-        """
-        Trains the model for a specified number of epochs and optionally saves the trained model.
-
-        Args:
-            epochs (int, optional): The number of epochs to train the model. Defaults to None.
-            save_pt_model (bool, optional): Flag indicating whether to save the PyTorch model after training. Defaults to False.
-
-        Returns:
-            Tuple[np.ndarray, np.ndarray]: 
-                the returned tuple contains the following:
-                - train_loss (np.ndarray): An array containing the training loss values over epochs.
-                - valid_loss (np.ndarray): An array containing the validation loss values over epochs.
-        """
+        
         
         if epochs is None:
             epochs = self.epochs_num
@@ -591,14 +558,8 @@ def one_hot_to_rgb(one_hot_tensor):
 
 
 def plot_training(train_loss: np.ndarray, valid_loss: np.ndarray, best_valid_loss:float, best_valid_loss_epoch_num: int, best_valid_loss_epoch_num_in_m:float,  save_path: str = None) -> None:
-    """
-    Plot the training and validation loss over epochs.
-
-    Args:
-        train_loss (np.ndarray): An array containing the training loss values over epochs.
-        valid_loss (np.ndarray): An array containing the validation loss values over epochs.
-        save_path (str, optional): The path to save the plot as an image file. Defaults to None.
-    """
+   
+   
     
     epochs_arr = np.arange(train_loss.size)
     # Create line plots for y1_values and y2_values
