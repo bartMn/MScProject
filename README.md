@@ -1,4 +1,5 @@
-# MSc Project: Multisensory Data Processing and Machine Learning for Robotics
+# MSc Project: Multi-modal representation of contact-rich manipulation
+(Multisensory Data Processing and Machine Learning for Robotics)
 
 This repository contains the codebase for MSc project, which focuses on multisensory data processing and machine learning for robotics applications. The project leverages data collected from simulated environments to train and evaluate machine learning models for robotic tasks.
 
