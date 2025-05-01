@@ -31,18 +31,18 @@ This project integrates simulation-based data collection, preprocessing pipeline
 ## Data Collection
 To collect data using the Franka Push experiment:
 
-1. Set the following environment variables before running the experiment:
-    TEST_AND_SAVE_SENSORS=true
-    ERASE_EXISTING_DATA=true (set to false after the first run)
-    RECORDED_DATA_DIR=/path/to/recorded_data
+1. Set the following environment variables before running the experiment:  
+    TEST_AND_SAVE_SENSORS=true  
+    ERASE_EXISTING_DATA=true (set to false after the first run)  
+    RECORDED_DATA_DIR=/path/to/recorded_data  
 
-2. Run the following command (You can use the povided model in "nn"):
-    python source/standalone/workflows/rl_games/play.py --task=Isaac-Franka-Push-Direct-v0
-    --num_envs 1
-    --checkpoint {path_to_isaac_sim}/isaac-sim-4.0.0/IsaacLab/logs/rl_games/franka_push_direct/2024-07-21_21-44-10/nn/franka_push_direct.pth
-    --enable_cameras. 
+2. Run the following command (You can use the povided model in "nn"):  
+    python source/standalone/workflows/rl_games/play.py --task=Isaac-Franka-Push-Direct-v0  
+    --num_envs 1  
+    --checkpoint {path_to_isaac_sim}/isaac-sim-4.0.0/IsaacLab/logs/rl_games/franka_push_direct/2024-07-21_21-44-10/nn/franka_push_direct.pth  
+    --enable_cameras.  
 
-3. Run the script to generate RGB-flow images:
+3. Run the script to generate RGB-flow images:  
     python src/data_processing/create_flow_imgs.py
 
 ## Model Training
