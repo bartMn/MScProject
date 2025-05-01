@@ -1,20 +1,59 @@
-To make use of the codes please follow the following steps:
-1. install isaac sim according to the instruciotns at https://docs.omniverse.nvidia.com/isaacsim/latest/installation/install_workstation.html
+# MSc Project: Multisensory Data Processing and Machine Learning for Robotics
 
-2. use the IsaacLab folder provided in the projectCode (should beplaced in the installation directory of isaac sim e.g. ~/.local/share/ov/pkg/isaac-sim-4.0.0)
+This repository contains the codebase for MSc project, which focuses on multisensory data processing and machine learning for robotics applications. The project leverages data collected from simulated environments to train and evaluate machine learning models for robotic tasks.
 
-3. run the franka push expetinment to gater data (exmaple when running from location of issac lab: python source/standalone/workflows/rl_games/play.py --task=Isaac-Franka-Push-Direct-v0 --num_envs 1 --checkpoint /home/bart/.local/share/ov/pkg/isaac-sim-4.0.0/IsaacLab/logs/rl_games/franka_push_direct/2024-07-21_21-44-10/nn/franka_push_direct.pth --enable_cameras). You can use the povided model in "nn"
-Note: before running the exeriemnt set the environemnt variables:
-TEST_AND_SAVE_SENSORS to true
-ERASE_EXISTING_DATA to true for the first run and then change it to false
-RECORDED_DATA_DIR to the location where gathered data will be saved (when you go to the projectCode -> src -> ml -> model_classes.py it can be seen that this file looks for training data in "data_root = os.path.join(data_root, "..", "..", "..", "recorded_data_isaac_lab")" so place the recorded data in such a location. The same applies to the test set "os.path.join(data_root, "..", "..", "..", "test_set")")
+---
 
-4. Run to test different modalities run the projectCode -> notebooks -> train_models.py
+## Project Overview
 
-5. recorded_data_isaac_lab shows what the training dataset looked like. In this folder there are only 2 episodes recorded.
+This project integrates simulation-based data collection, preprocessing pipelines, and machine learning models to solve robotic tasks. The key components include:
+- **Data Collection**: Using Isaac Sim to simulate robotic environments and collect multisensory data (e.g., RGB, depth, segmentation, and force data).
+- **Data Processing**: Preprocessing and organizing the collected data for training machine learning models.
+- **Model Training**: Training deep learning models for tasks such as object manipulation and trajectory prediction.
 
-Other sctipts in the "notebooks" folder were being modified as required. For exmaple the test_models.py is used to run tests on the test dataset, make_plots.py is used to make plots of predicions of cube positions, remove.py is used to remove a specifed episode, sort_models.py is used to sort models by loss on a validation set and makes xlsx fies.
+---
 
-All logic is in the projectCode -> src folder in the "ml" folder there are codes used to create machine learning models and in "data_processing" there are codes used to preprocess, read and supply the data to the machine learing models
+## Installation
 
+1. **Install Isaac Sim**  
+   Follow the official [Isaac Sim installation guide](https://docs.omniverse.nvidia.com/isaacsim/latest/installation/install_workstation.html).
+
+2. **Set Up the Project**  
+   Place the `IsaacLab` folder in the Isaac Sim installation directory (e.g., `~/.local/share/ov/pkg/isaac-sim-4.0.0`).
+
+3. **Install Python Dependencies**  
+   Use the following command to install the required Python packages:
+   ```bash
+   pip install -r requirements.txt
+
+
+## Data Collection
+To collect data using the Franka Push experiment:
+
+1. Set the following environment variables before running the experiment:
+    TEST_AND_SAVE_SENSORS=true
+    ERASE_EXISTING_DATA=true (set to false after the first run)
+    RECORDED_DATA_DIR=/path/to/recorded_data
+
+2. Run the following command (You can use the povided model in "nn"):
+    python source/standalone/workflows/rl_games/play.py --task=Isaac-Franka-Push-Direct-v0
+    --num_envs 1
+    --checkpoint {path_to_isaac_sim}/isaac-sim-4.0.0/IsaacLab/logs/rl_games/franka_push_direct/2024-07-21_21-44-10/nn/franka_push_direct.pth
+    --enable_cameras. 
+
+3. Run the script to generate RGB-flow images:
+    python src/data_processing/create_flow_imgs.py
+
+## Model Training
+The notebooks/train_models.py script is used to train machine learning models. It supports various data modalities (e.g., RGB, depth, segmentation) and different tasks (generating RGB camera image, generating RGB-flow camera image, generating RGB-segmented camera image, future object position).
+
+Steps:
+1. Update the dataset paths in the script.
+2. Run the training script:
+    python notebooks/train_models.py
+
+## Results and Analysis
+The results of the trained models, including metrics and visualizations, are saved in the results/ directory. 
+
+## Disclaimer
 These codes were tesed only on Ubuntu 20.04 LTS operating system.
